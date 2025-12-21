@@ -879,6 +879,11 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
     } catch {
         Write-Host "    ERROR reading package list: `$(`$_.Exception.Message)" -ForegroundColor Red
         Write-Host '    Continuing with user script...' -ForegroundColor Yellow
+    } finally {
+        # Clean up packages.txt file after installation
+        if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
+            Remove-Item -Path `$packageListFile.FullName -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
