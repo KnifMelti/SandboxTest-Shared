@@ -858,7 +858,7 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
                 Write-Host "    Installing: `$packageId" -ForegroundColor Cyan
 
                 try {
-                    `$result = winget install --id `$packageId --exact --silent --accept-source-agreements --accept-package-agreements 2>&1
+                    `$result = winget install --id `$packageId --silent --accept-source-agreements --accept-package-agreements 2>&1
 
                     if (`$LASTEXITCODE -eq 0) {
                         Write-Host "      SUCCESS: `$packageId" -ForegroundColor Green
