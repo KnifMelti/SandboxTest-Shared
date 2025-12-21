@@ -874,7 +874,7 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
             }
 
             Write-Host ''
-            Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor $(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
+            Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor `$(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
         }
     } catch {
         Write-Host "    ERROR reading package list: `$(`$_.Exception.Message)" -ForegroundColor Red
