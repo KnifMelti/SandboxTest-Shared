@@ -5,6 +5,7 @@ function SandboxTest {
         [string] $MapFolder,
         [string] $SandboxFolderName,
         [string] $WinGetVersion,
+        [string] $InstallPackageList = "",
         [switch] $Prerelease,
         [switch] $Clean,
         [switch] $Async
@@ -490,9 +491,20 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 
         Write-Verbose "Copying assets into $script:TestDataFolder"
         $script:SandboxWinGetSettings | ConvertTo-Json | Out-File -FilePath (Join-Path -Path $script:TestDataFolder -ChildPath 'settings.json') -Encoding ascii
-        foreach ($dependency in $script:AppInstallerDependencies) { 
+        foreach ($dependency in $script:AppInstallerDependencies) {
             if (Test-Path -Path $dependency.SaveTo) {
-                Copy-Item -Path $dependency.SaveTo -Destination $script:TestDataFolder -ErrorAction SilentlyContinue 
+                Copy-Item -Path $dependency.SaveTo -Destination $script:TestDataFolder -ErrorAction SilentlyContinue
+            }
+        }
+
+        # Copy package list file if specified (SandboxStart feature - optional)
+        if (![string]::IsNullOrWhiteSpace($InstallPackageList)) {
+            $packageListPath = Join-Path (Join-Path $WorkingDir "wsb") "$InstallPackageList.txt"
+            if (Test-Path $packageListPath) {
+                Write-Verbose "Copying package list '$InstallPackageList' to sandbox"
+                Copy-Item -Path $packageListPath -Destination (Join-Path $script:TestDataFolder "packages.txt") -ErrorAction SilentlyContinue
+            } else {
+                Write-Warning "Package list file not found: $packageListPath"
             }
         }
 
@@ -819,6 +831,61 @@ winget settings --Enable LocalManifestFiles | Out-Null
 winget settings --Enable LocalArchiveMalwareScanOverride | Out-Null
 Set-WinHomeLocation -GeoID $($script:HostGeoID)
 Write-Host '    Configuration completed!' -ForegroundColor Green
+
+# Package Installation (optional SandboxStart feature)
+`$packageListFile = Get-ChildItem -Filter 'packages.txt' -ErrorAction SilentlyContinue
+if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
+    Write-Host ''
+    Write-Host '================================================' -ForegroundColor Cyan
+    Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
+    Write-Host '================================================' -ForegroundColor Cyan
+
+    try {
+        `$packages = Get-Content -Path `$packageListFile.FullName -Encoding UTF8 | Where-Object {
+            -not [string]::IsNullOrWhiteSpace(`$_) -and -not `$_.Trim().StartsWith('#')
+        }
+
+        if (`$packages.Count -eq 0) {
+            Write-Host '    No packages found in list.' -ForegroundColor Yellow
+        } else {
+            Write-Host "    Found `$(`$packages.Count) package(s) to install" -ForegroundColor Cyan
+
+            `$installed = 0
+            `$failed = 0
+
+            foreach (`$package in `$packages) {
+                `$packageId = `$package.Trim()
+                Write-Host "    Installing: `$packageId" -ForegroundColor Cyan
+
+                try {
+                    `$result = winget install --id `$packageId --silent --accept-source-agreements --accept-package-agreements 2>&1
+
+                    if (`$LASTEXITCODE -eq 0) {
+                        Write-Host "      SUCCESS: `$packageId" -ForegroundColor Green
+                        `$installed++
+                    } else {
+                        Write-Host "      FAILED: `$packageId (Exit code: `$LASTEXITCODE)" -ForegroundColor Red
+                        `$failed++
+                    }
+                } catch {
+                    Write-Host "      ERROR: `$packageId - `$(`$_.Exception.Message)" -ForegroundColor Red
+                    `$failed++
+                }
+            }
+
+            Write-Host ''
+            Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor `$(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
+        }
+    } catch {
+        Write-Host "    ERROR reading package list: `$(`$_.Exception.Message)" -ForegroundColor Red
+        Write-Host '    Continuing with user script...' -ForegroundColor Yellow
+    } finally {
+        # Clean up packages.txt file after installation
+        if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
+            Remove-Item -Path `$packageListFile.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
 
 `$BoundParameterScript = Get-ChildItem -Filter 'BoundParameterScript.ps1'
 if (`$BoundParameterScript) {
