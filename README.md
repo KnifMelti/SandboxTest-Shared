@@ -1,6 +1,6 @@
 # SandboxTest Shared Module
 
-Shared SandboxTest.ps1 function used by:
+Shared functions/files used by:
 - [SandboxStart](https://github.com/KnifMelti/SandboxStart)
 - [WAU-Settings-GUI](https://github.com/KnifMelti/WAU-Settings-GUI)
 
