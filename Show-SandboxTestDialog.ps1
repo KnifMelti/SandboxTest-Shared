@@ -881,7 +881,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$cmbWinGetVersion = New-Object System.Windows.Forms.ComboBox
 		$cmbWinGetVersion.Location = New-Object System.Drawing.Point($leftMargin, ($y + $labelHeight))
 		$cmbWinGetVersion.Size = New-Object System.Drawing.Size($controlWidth, $controlHeight)
-	$cmbWinGetVersion.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+		$cmbWinGetVersion.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 	
 	# Add empty option first (for "latest") - only item initially
 	[void]$cmbWinGetVersion.Items.Add("")
@@ -891,14 +891,18 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$cmbWinGetVersion.Add_DropDown({
 			# Use $this to reference the ComboBox safely within the event handler
 			if (-not $this.Tag) {
-				# Show loading indicator
-				$originalText = $this.Text
-				$this.Text = "Loading versions..."
+				# Show loading indicator by adding a temporary item
+				$originalIndex = $this.SelectedIndex
+				[void]$this.Items.Add("Loading versions...")
+				$this.SelectedIndex = $this.Items.Count - 1
 				[System.Windows.Forms.Application]::DoEvents()  # Force UI update
 				
 				try {
 					Write-Verbose "Fetching stable WinGet versions for dropdown..."
 					$stableVersions = Get-StableWinGetVersions
+					
+					# Remove loading indicator
+					$this.Items.RemoveAt($this.Items.Count - 1)
 					
 					# Add fetched versions to the dropdown
 					foreach ($version in $stableVersions) {
@@ -909,11 +913,14 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				}
 				catch {
 					Write-Warning "Failed to populate WinGet versions dropdown: $($_.Exception.Message)"
+					# Remove loading indicator even on error
+					if ($this.Items.Count -gt 0 -and $this.Items[$this.Items.Count - 1] -eq "Loading versions...") {
+						$this.Items.RemoveAt($this.Items.Count - 1)
+					}
 				}
 				finally {
-					# Always restore original text and mark as loaded, even if API call failed
-					# Restore to original text (typically empty string on first open)
-					$this.Text = $originalText
+					# Restore original selection and mark as loaded
+					$this.SelectedIndex = $originalIndex
 					$this.Tag = $true
 				}
 			}
