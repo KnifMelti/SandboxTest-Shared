@@ -673,7 +673,7 @@ Install.* = Installer.ps1
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
-			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.cmd;*.bat;*.ps1)|*.exe;*.msi;*.cmd;*.bat;*.ps1|All Files (*.*)|*.*"
+			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.cmd;*.bat;*.js;*.ps1)|*.exe;*.msi;*.cmd;*.bat;*.js;*.ps1|All Files (*.*)|*.*"
 			$fileDialog.InitialDirectory = $txtMapFolder.Text
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
