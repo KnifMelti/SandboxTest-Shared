@@ -791,7 +791,7 @@ function Update-EnvironmentVariables {
 Push-Location $($script:SandboxTestDataFolder)
 
 # WinGet Installation (conditional on networking)
-if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+if ("$Networking" -eq "Enable") {
     Write-Host '================================================' -ForegroundColor Cyan
     Write-Host '--> Installing WinGet $($script:AppInstallerReleaseTag)' -ForegroundColor Yellow
     Write-Host '================================================' -ForegroundColor Cyan
@@ -854,7 +854,7 @@ New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associa
 New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations' -Name 'ModRiskFileTypes' -Type 'String' -Value '.bat;.exe;.reg;.vbs;.chm;.msi;.js;.cmd' -Force | Out-Null
 
 # WinGet configuration (only if networking is enabled)
-if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+if ("$Networking" -eq "Enable") {
     Write-Host '    [2/2] Applying WinGet settings...' -ForegroundColor Cyan
     # Apply settings.json first so subsequent CLI toggles persist and are not overwritten
     Get-ChildItem -Filter 'settings.json' | Copy-Item -Destination C:\Users\WDAGUtilityAccount\AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json -ErrorAction SilentlyContinue
@@ -870,7 +870,7 @@ Write-Host '    Configuration completed!' -ForegroundColor Green
 # Package Installation (optional SandboxStart feature - requires networking)
 `$packageListFile = Get-ChildItem -Filter 'packages.txt' -ErrorAction SilentlyContinue
 if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
-    if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+    if ("$Networking" -eq "Enable") {
         Write-Host ''
         Write-Host '================================================' -ForegroundColor Cyan
         Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
@@ -998,13 +998,22 @@ $mappedFolders
 
         $additionalCommands = ""
 
-        Write-Information @"
+        # Build info message based on networking setting
+        $infoMessage = @"
 --> Starting Windows Sandbox, and:
     - Mounting the following directories:
 $mappedDirsInfo
+"@
+
+        if ($Networking -eq "Enable") {
+            $infoMessage += @"
+
     - Installing WinGet
     - Configuring Winget$additionalCommands
 "@
+        }
+
+        Write-Information $infoMessage
 
         if ($Script) {
             Write-Information @"

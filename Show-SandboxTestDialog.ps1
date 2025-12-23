@@ -947,8 +947,8 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				$comboBox.Enabled = $false
 				$comboBox.Text = ""
 			} else {
-				# Enable version field when Pre-release is unchecked
-				$comboBox.Enabled = $true
+				# Enable version field when Pre-release is unchecked (but only if networking is enabled)
+				$comboBox.Enabled = $chkNetworking.Checked
 			}
 		})
 
@@ -1006,7 +1006,26 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$tooltipNetworking = New-Object System.Windows.Forms.ToolTip
 		$tooltipNetworking.SetToolTip($chkNetworking, "Enable network access in sandbox (required for WinGet downloads)")
 
-		# Add event handler to warn about package lists when networking is disabled
+		# Add event handler to enable/disable WinGet-related controls based on networking
+		$chkNetworking.Add_CheckedChanged({
+			$enabled = $this.Checked
+
+			# Enable/disable all WinGet-related controls
+			$cmbInstallPackages.Enabled = $enabled
+			$btnEditPackages.Enabled = $enabled
+			$cmbWinGetVersion.Enabled = $enabled -and -not $chkPrerelease.Checked
+			$chkPrerelease.Enabled = $enabled
+			$chkClean.Enabled = $enabled
+
+			# Clear selections when disabling
+			if (-not $enabled) {
+				$cmbInstallPackages.SelectedIndex = 0  # Select empty option
+				$cmbWinGetVersion.SelectedIndex = 0    # Select empty option
+				$chkPrerelease.Checked = $false
+				$chkClean.Checked = $false
+			}
+		})
+
 		$form.Controls.Add($chkNetworking)
 
 		$y += $labelHeight + 5
@@ -1018,25 +1037,35 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
 		# 3. WMI via Get-WmiObject (older systems)
 		# 4. Hard-coded fallback (8 GB)
+		Write-Host "Detecting system memory..." -NoNewline
 		try {
 			$totalMemoryMB = $null
 
 			# Method 1: Try ComputerInfo (Windows 10+ preferred method - no CIM/WMI)
 			try {
+				# Suppress progress output from Get-ComputerInfo
+				$prevProgressPreference = $ProgressPreference
+				$ProgressPreference = 'SilentlyContinue'
 				$computerInfo = Get-ComputerInfo -Property CsTotalPhysicalMemory -ErrorAction Stop
+				$ProgressPreference = $prevProgressPreference
 				$totalMemoryMB = [int]($computerInfo.CsTotalPhysicalMemory / 1MB)
+				Write-Host " Done" -ForegroundColor Green
 				Write-Verbose "Memory detected via ComputerInfo: $totalMemoryMB MB"
 			}
 			catch {
+				# Restore progress preference on error
+				if ($prevProgressPreference) { $ProgressPreference = $prevProgressPreference }
 				# Method 2: Try CIM (works without elevation on most systems)
 				try {
 					$totalMemoryMB = [int]((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+					Write-Host " Done" -ForegroundColor Green
 					Write-Verbose "Memory detected via CIM: $totalMemoryMB MB"
 				}
 				catch {
 					# Method 3: Try WMI as last resort
 					try {
 						$totalMemoryMB = [int]((Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+						Write-Host " Done" -ForegroundColor Green
 						Write-Verbose "Memory detected via WMI: $totalMemoryMB MB"
 					}
 					catch {
@@ -1055,6 +1084,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		}
 		catch {
 			# Fallback if all detection methods fail
+			Write-Host " Using default" -ForegroundColor Yellow
 			$totalMemoryMB = 8192
 			$maxSafeMemory = 6144
 			Write-Verbose "Could not detect system memory, using fallback: $totalMemoryMB MB (max safe: $maxSafeMemory MB)"
@@ -1267,27 +1297,6 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$btnOK.Size = New-Object System.Drawing.Size(75, 30)
 		$btnOK.Text = "OK"
 		$btnOK.Add_Click({
-			# Validate networking and package list compatibility
-			if (-not $chkNetworking.Checked) {
-				# Check if package list is selected
-				if ($cmbInstallPackages.SelectedItem -and
-				    $cmbInstallPackages.SelectedItem -ne "" -and
-				    $cmbInstallPackages.SelectedItem -ne "[Create new list...]") {
-
-					$result = [System.Windows.Forms.MessageBox]::Show(
-						"Disabling networking will prevent package installation via WinGet.`n`nPackages require internet access to download.`n`nClick OK to continue without networking, or Cancel to go back.",
-						"Network Required for Packages",
-						"OKCancel",
-						"Warning"
-					)
-
-					# If user clicks Cancel, abort the OK action
-					if ($result -eq "Cancel") {
-						return
-					}
-				}
-			}
-
 			$resultScript = $null
 			if (-not [string]::IsNullOrWhiteSpace($txtScript.Text)) {
 				try { $resultScript = [ScriptBlock]::Create($txtScript.Text) } catch { $resultScript = $null }
