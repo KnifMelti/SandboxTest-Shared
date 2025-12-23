@@ -991,7 +991,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$lblWSBConfig = New-Object System.Windows.Forms.Label
 		$lblWSBConfig.Location = New-Object System.Drawing.Point($leftMargin, $y)
 		$lblWSBConfig.Size = New-Object System.Drawing.Size(300, $labelHeight)
-		$lblWSBConfig.Text = "Windows Sandbox Configuration:"
+		$lblWSBConfig.Text = "WSB Configuration:"
 		$lblWSBConfig.Font = New-Object System.Drawing.Font($lblWSBConfig.Font.FontFamily, $lblWSBConfig.Font.Size, [System.Drawing.FontStyle]::Bold)
 		$form.Controls.Add($lblWSBConfig)
 
