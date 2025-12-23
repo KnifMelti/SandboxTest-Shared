@@ -534,7 +534,7 @@ Install.* = Installer.ps1
 		# Create the main form
 		$form = New-Object System.Windows.Forms.Form
 		$form.Text = "Windows Sandbox Test Configuration"
-		$form.Size = New-Object System.Drawing.Size(450, 725)
+		$form.Size = New-Object System.Drawing.Size(450, 775)
 		$form.StartPosition = "CenterScreen"
 		$form.FormBorderStyle = "FixedDialog"
 		$form.MaximizeBox = $false
@@ -553,7 +553,7 @@ Install.* = Installer.ps1
 		$y = 20
 		$labelHeight = 20
 		$controlHeight = 23
-		$spacing = 10
+		$spacing = 5
 		$leftMargin = 20
 		$controlWidth = 400
 
@@ -987,9 +987,153 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		$y += $labelHeight + $spacing + 10
 
-		# (Removed) force CMD execution option; PowerShell execution is robust enough
+		# WSB Configuration Section
+		$lblWSBConfig = New-Object System.Windows.Forms.Label
+		$lblWSBConfig.Location = New-Object System.Drawing.Point($leftMargin, $y)
+		$lblWSBConfig.Size = New-Object System.Drawing.Size(300, $labelHeight)
+		$lblWSBConfig.Text = "Windows Sandbox Configuration:"
+		$lblWSBConfig.Font = New-Object System.Drawing.Font($lblWSBConfig.Font.FontFamily, $lblWSBConfig.Font.Size, [System.Drawing.FontStyle]::Bold)
+		$form.Controls.Add($lblWSBConfig)
 
 		$y += $labelHeight + 5
+
+		# Networking checkbox
+		$chkNetworking = New-Object System.Windows.Forms.CheckBox
+		$chkNetworking.Location = New-Object System.Drawing.Point($leftMargin, $y)
+		$chkNetworking.Size = New-Object System.Drawing.Size(200, $labelHeight)
+		$chkNetworking.Text = "Enable Networking"
+		$chkNetworking.Checked = $true
+		$tooltipNetworking = New-Object System.Windows.Forms.ToolTip
+		$tooltipNetworking.SetToolTip($chkNetworking, "Enable network access in sandbox (required for WinGet downloads)")
+		$form.Controls.Add($chkNetworking)
+
+		$y += $labelHeight + 5
+
+		# Memory dropdown - First detect available system RAM
+		# Get total physical memory and calculate safe maximum (75% of total RAM)
+		# Uses multiple methods (no elevation required):
+		# 1. ComputerInfo (Win10+, preferred - fastest and no CIM)
+		# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
+		# 3. WMI via Get-WmiObject (older systems)
+		# 4. Hard-coded fallback (8 GB)
+		try {
+			$totalMemoryMB = $null
+
+			# Method 1: Try ComputerInfo (Windows 10+ preferred method - no CIM/WMI)
+			try {
+				$computerInfo = Get-ComputerInfo -Property CsTotalPhysicalMemory -ErrorAction Stop
+				$totalMemoryMB = [int]($computerInfo.CsTotalPhysicalMemory / 1MB)
+				Write-Verbose "Memory detected via ComputerInfo: $totalMemoryMB MB"
+			}
+			catch {
+				# Method 2: Try CIM (works without elevation on most systems)
+				try {
+					$totalMemoryMB = [int]((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+					Write-Verbose "Memory detected via CIM: $totalMemoryMB MB"
+				}
+				catch {
+					# Method 3: Try WMI as last resort
+					try {
+						$totalMemoryMB = [int]((Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+						Write-Verbose "Memory detected via WMI: $totalMemoryMB MB"
+					}
+					catch {
+						# All methods failed - use fallback
+						$totalMemoryMB = $null
+					}
+				}
+			}
+
+			if ($totalMemoryMB) {
+				$maxSafeMemory = [int]($totalMemoryMB * 0.75)
+			}
+			else {
+				throw "All memory detection methods failed"
+			}
+		}
+		catch {
+			# Fallback if all detection methods fail
+			$totalMemoryMB = 8192
+			$maxSafeMemory = 6144
+			Write-Verbose "Could not detect system memory, using fallback: $totalMemoryMB MB (max safe: $maxSafeMemory MB)"
+		}
+
+		# Generate memory options dynamically based on available RAM
+		# Start with common increments and filter based on maxSafeMemory
+		$allMemoryOptions = @(2048, 4096, 6144, 8192, 10240, 12288, 16384, 20480, 24576, 32768, 49152, 65536)
+		$memoryOptions = $allMemoryOptions | Where-Object { $_ -le $maxSafeMemory }
+
+		# Ensure minimum option exists (2048 MB required by Windows Sandbox)
+		if (-not $memoryOptions -or $memoryOptions.Count -eq 0) {
+			$memoryOptions = @(2048)
+		}
+
+		$defaultSelected = -1
+
+		# Now create the UI controls with the detected memory values
+		$lblMemory = New-Object System.Windows.Forms.Label
+		$lblMemory.Location = New-Object System.Drawing.Point($leftMargin, $y)
+		$lblMemory.Size = New-Object System.Drawing.Size(150, $labelHeight)
+		$lblMemory.Text = "Memory (MB):"
+		$form.Controls.Add($lblMemory)
+
+		$cmbMemory = New-Object System.Windows.Forms.ComboBox
+		$cmbMemory.Location = New-Object System.Drawing.Point(($leftMargin + 160), $y)
+		$cmbMemory.Size = New-Object System.Drawing.Size(120, $controlHeight)
+		$cmbMemory.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+
+		# Populate with pre-calculated memory options
+		foreach ($memOption in $memoryOptions) {
+			if ($memOption -le $maxSafeMemory) {
+				[void]$cmbMemory.Items.Add($memOption.ToString())
+				if ($memOption -eq 4096) { $defaultSelected = $cmbMemory.Items.Count - 1 }
+			}
+		}
+
+		# Set default selection (4096 MB if available, otherwise the highest safe option)
+		if ($defaultSelected -ge 0) {
+			$cmbMemory.SelectedIndex = $defaultSelected
+		}
+		elseif ($cmbMemory.Items.Count -gt 0) {
+			$cmbMemory.SelectedIndex = $cmbMemory.Items.Count - 1  # Select highest available
+		}
+		else {
+			# Extreme fallback: add minimum required memory
+			[void]$cmbMemory.Items.Add("2048")
+			$cmbMemory.SelectedIndex = 0
+		}
+
+		# Build helpful tooltip showing available RAM and highest option
+		$highestOption = if ($memoryOptions.Count -gt 0) { $memoryOptions[-1] } else { 2048 }
+		$highestOptionGB = [math]::Round($highestOption / 1024, 1)
+		$totalGB = [math]::Round($totalMemoryMB / 1024, 1)
+
+		$tooltipMemory = New-Object System.Windows.Forms.ToolTip
+		$tooltipMemory.SetToolTip($cmbMemory, "RAM for sandbox. Your system: $totalGB GB total. Highest safe option: $highestOptionGB GB (leaves 25% for Windows)")
+		$form.Controls.Add($cmbMemory)
+
+		$y += $labelHeight + 5
+
+		# vGPU dropdown
+		$lblvGPU = New-Object System.Windows.Forms.Label
+		$lblvGPU.Location = New-Object System.Drawing.Point($leftMargin, $y)
+		$lblvGPU.Size = New-Object System.Drawing.Size(150, $labelHeight)
+		$lblvGPU.Text = "GPU Virtualization:"
+		$form.Controls.Add($lblvGPU)
+
+		$cmbvGPU = New-Object System.Windows.Forms.ComboBox
+		$cmbvGPU.Location = New-Object System.Drawing.Point(($leftMargin + 160), $y)
+		$cmbvGPU.Size = New-Object System.Drawing.Size(120, $controlHeight)
+		$cmbvGPU.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
+		[void]$cmbvGPU.Items.Add("Default")
+		[void]$cmbvGPU.Items.Add("Enable")
+		[void]$cmbvGPU.Items.Add("Disable")
+		$cmbvGPU.SelectedIndex = 0  # Default: "Default"
+		$tooltipvGPU = New-Object System.Windows.Forms.ToolTip
+		$tooltipvGPU.SetToolTip($cmbvGPU, "Enable: Hardware acceleration, Disable: Software rendering (WARP), Default: System default (currently Enable)")
+		$form.Controls.Add($cmbvGPU)
+
+		$y += $labelHeight + $spacing + 10
 
 		# Script section
 		$lblScript = New-Object System.Windows.Forms.Label
@@ -1141,6 +1285,9 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				Async = $chkAsync.Checked
 				Verbose = $chkVerbose.Checked
 				Wait = $chkWait.Checked
+				Networking = if ($chkNetworking.Checked) { "Enable" } else { "Disable" }
+				MemoryInMB = [int]$cmbMemory.SelectedItem
+				vGPU = $cmbvGPU.SelectedItem
 				Script = $resultScript
 			}
 			$form.Close()
@@ -1208,6 +1355,17 @@ if ($dialogResult.Prerelease) { $sandboxParams.Prerelease = $true }
 if ($dialogResult.Clean) { $sandboxParams.Clean = $true }
 if ($dialogResult.Async) { $sandboxParams.Async = $true }
 if ($dialogResult.Verbose) { $sandboxParams.Verbose = $true }
+
+# Add WSB configuration parameters
+if (![string]::IsNullOrWhiteSpace($dialogResult.Networking)) {
+	$sandboxParams.Networking = $dialogResult.Networking
+}
+if ($dialogResult.MemoryInMB) {
+	$sandboxParams.MemoryInMB = $dialogResult.MemoryInMB
+}
+if (![string]::IsNullOrWhiteSpace($dialogResult.vGPU)) {
+	$sandboxParams.vGPU = $dialogResult.vGPU
+}
 
 # Call SandboxTest with collected parameters
 SandboxTest @sandboxParams

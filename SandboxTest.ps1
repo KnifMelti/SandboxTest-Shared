@@ -8,7 +8,13 @@ function SandboxTest {
         [string] $InstallPackageList = "",
         [switch] $Prerelease,
         [switch] $Clean,
-        [switch] $Async
+        [switch] $Async,
+        [ValidateSet("Enable", "Disable")]
+        [string] $Networking = "Enable",
+        [ValidateRange(2048, 999999)]
+        [int] $MemoryInMB = 4096,
+        [ValidateSet("Default", "Enable", "Disable")]
+        [string] $vGPU = "Default"
     )
     <#
     .SYNOPSIS
@@ -929,7 +935,9 @@ Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 
         @"
 <Configuration>
-  <Networking>Enable</Networking>
+  <Networking>$Networking</Networking>
+  <MemoryInMB>$MemoryInMB</MemoryInMB>
+  <vGPU>$vGPU</vGPU>
   <MappedFolders>
 $mappedFolders
   </MappedFolders>
