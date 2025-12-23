@@ -369,8 +369,10 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
         }
 
         # Get the details for the version of WinGet that was requested
-        Write-Verbose "Fetching release details from $script:ReleasesApiUrl; Filters: {Prerelease=$script:Prerelease; Version~=$script:WinGetVersion}"
-        $script:WinGetReleaseDetails = Get-Release
+        # Skip WinGet preparation if networking is disabled
+        if ($Networking -eq "Enable") {
+            Write-Verbose "Fetching release details from $script:ReleasesApiUrl; Filters: {Prerelease=$script:Prerelease; Version~=$script:WinGetVersion}"
+            $script:WinGetReleaseDetails = Get-Release
         if (!$script:WinGetReleaseDetails) {
             Write-Error -Category ObjectNotFound 'No WinGet releases found matching criteria' -ErrorAction Continue
             return (Invoke-CleanExit -ExitCode 1)
@@ -480,6 +482,12 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
                 break
             }
         }
+        } else {
+            # Networking is disabled - skip WinGet preparation entirely
+            Write-Information '--> Skipping WinGet Preparation'
+            Write-Information 'Networking is disabled - WinGet installation will be skipped in sandbox'
+            $script:AppInstallerDependencies = @()
+        }
 
         Stop-NamedProcess -ProcessName 'WindowsSandboxClient'
         Stop-NamedProcess -ProcessName 'WindowsSandboxRemoteSession'
@@ -495,12 +503,17 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
         if (!(Initialize-Folder $script:TestDataFolder)) { throw 'Could not create folder for mapping files into the sandbox' }
         if (!(Initialize-Folder $script:DependenciesCacheFolder)) { throw 'Could not create folder for caching dependencies' }
 
-        Write-Verbose "Copying assets into $script:TestDataFolder"
-        $script:SandboxWinGetSettings | ConvertTo-Json | Out-File -FilePath (Join-Path -Path $script:TestDataFolder -ChildPath 'settings.json') -Encoding ascii
-        foreach ($dependency in $script:AppInstallerDependencies) {
-            if (Test-Path -Path $dependency.SaveTo) {
-                Copy-Item -Path $dependency.SaveTo -Destination $script:TestDataFolder -ErrorAction SilentlyContinue
+        # Copy WinGet assets only if networking is enabled
+        if ($Networking -eq "Enable") {
+            Write-Verbose "Copying assets into $script:TestDataFolder"
+            $script:SandboxWinGetSettings | ConvertTo-Json | Out-File -FilePath (Join-Path -Path $script:TestDataFolder -ChildPath 'settings.json') -Encoding ascii
+            foreach ($dependency in $script:AppInstallerDependencies) {
+                if (Test-Path -Path $dependency.SaveTo) {
+                    Copy-Item -Path $dependency.SaveTo -Destination $script:TestDataFolder -ErrorAction SilentlyContinue
+                }
             }
+        } else {
+            Write-Verbose "Skipping WinGet asset copying (networking disabled)"
         }
 
         # Copy package list file if specified (SandboxStart feature - optional)
@@ -634,6 +647,7 @@ $notepadPPConfig | Out-File -FilePath (Join-Path $notepadPPConfigFolder "config.
         # Replace placeholders with actual host theme values
         $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_APPS_LIGHT_THEME', $script:HostAppsUseLightTheme
         $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_SYSTEM_LIGHT_THEME', $script:HostSystemUsesLightTheme
+        $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_NETWORKING', $Networking
 
         if ($Script) {
             Write-Verbose "Creating script file from 'Script' argument with initialization code"
@@ -776,49 +790,58 @@ function Update-EnvironmentVariables {
 
 Push-Location $($script:SandboxTestDataFolder)
 
-Write-Host '================================================' -ForegroundColor Cyan
-Write-Host '--> Installing WinGet $($script:AppInstallerReleaseTag)' -ForegroundColor Yellow
-Write-Host '================================================' -ForegroundColor Cyan
+# WinGet Installation (conditional on networking)
+if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+    Write-Host '================================================' -ForegroundColor Cyan
+    Write-Host '--> Installing WinGet $($script:AppInstallerReleaseTag)' -ForegroundColor Yellow
+    Write-Host '================================================' -ForegroundColor Cyan
 
-try {
-    if ($([int]$script:UsePowerShellModuleForInstall)) { throw }
-    Write-Host '    [1/3] Extracting packages...' -ForegroundColor Cyan
-    `$ProgressPreference = 'SilentlyContinue'
+    try {
+        if ($([int]$script:UsePowerShellModuleForInstall)) { throw }
+        Write-Host '    [1/3] Extracting packages...' -ForegroundColor Cyan
+        `$ProgressPreference = 'SilentlyContinue'
 
-    # Only extract if not already extracted (saves time)
-    `$zipFiles = Get-ChildItem -Filter '*.zip'
-    foreach (`$zip in `$zipFiles) {
-        `$extractedFolder = Join-Path `$PWD.Path (`$zip.BaseName)
-        if (-not (Test-Path `$extractedFolder)) {
-            Expand-Archive -Path `$zip.FullName -DestinationPath `$PWD.Path -Force
+        # Only extract if not already extracted (saves time)
+        `$zipFiles = Get-ChildItem -Filter '*.zip'
+        foreach (`$zip in `$zipFiles) {
+            `$extractedFolder = Join-Path `$PWD.Path (`$zip.BaseName)
+            if (-not (Test-Path `$extractedFolder)) {
+                Expand-Archive -Path `$zip.FullName -DestinationPath `$PWD.Path -Force
+            }
         }
-    }
 
-    Write-Host '    [2/3] Installing dependencies...' -ForegroundColor Cyan
-    Get-ChildItem -Recurse -Filter '*.appx' | Where-Object {`$_.FullName -match 'x64'} | Add-AppxPackage -ErrorAction Stop
-    Write-Host '    [3/3] Installing WinGet...' -ForegroundColor Cyan
-    Add-AppxPackage './$($script:AppInstallerPFN).msixbundle' -ErrorAction Stop
-    Write-Host '    WinGet installed successfully!' -ForegroundColor Green
-} catch {
-  Write-Host ''
-  Write-Host '    Package installation failed. Using fallback method...' -ForegroundColor Yellow
-  Write-Host ''
-  try {
-    Write-Host '    [1/3] Installing NuGet package provider...' -ForegroundColor Cyan
-    `$ProgressPreference = 'SilentlyContinue'
-    Install-PackageProvider -Name NuGet -Force | Out-Null
-    Write-Host '    [2/3] Installing Microsoft.WinGet.Client module...' -ForegroundColor Cyan
-    Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
-  } catch {
-    throw "Microsoft.Winget.Client was not installed successfully"
-  } finally {
-    if (-not(Get-Module -ListAvailable -Name Microsoft.Winget.Client)) {
-      throw "Microsoft.Winget.Client was not found. Check that the Windows Package Manager PowerShell module was installed correctly."
+        Write-Host '    [2/3] Installing dependencies...' -ForegroundColor Cyan
+        Get-ChildItem -Recurse -Filter '*.appx' | Where-Object {`$_.FullName -match 'x64'} | Add-AppxPackage -ErrorAction Stop
+        Write-Host '    [3/3] Installing WinGet...' -ForegroundColor Cyan
+        Add-AppxPackage './$($script:AppInstallerPFN).msixbundle' -ErrorAction Stop
+        Write-Host '    WinGet installed successfully!' -ForegroundColor Green
+    } catch {
+      Write-Host ''
+      Write-Host '    Package installation failed. Using fallback method...' -ForegroundColor Yellow
+      Write-Host ''
+      try {
+        Write-Host '    [1/3] Installing NuGet package provider...' -ForegroundColor Cyan
+        `$ProgressPreference = 'SilentlyContinue'
+        Install-PackageProvider -Name NuGet -Force | Out-Null
+        Write-Host '    [2/3] Installing Microsoft.WinGet.Client module...' -ForegroundColor Cyan
+        Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+      } catch {
+        throw "Microsoft.Winget.Client was not installed successfully"
+      } finally {
+        if (-not(Get-Module -ListAvailable -Name Microsoft.Winget.Client)) {
+          throw "Microsoft.Winget.Client was not found. Check that the Windows Package Manager PowerShell module was installed correctly."
+        }
+      }
+      Write-Host '    [3/3] Repairing WinGet Package Manager...' -ForegroundColor Cyan
+      Repair-WinGetPackageManager -Version $($script:AppInstallerReleaseTag)
+      Write-Host '    WinGet installed successfully!' -ForegroundColor Green
     }
-  }
-  Write-Host '    [3/3] Repairing WinGet Package Manager...' -ForegroundColor Cyan
-  Repair-WinGetPackageManager -Version $($script:AppInstallerReleaseTag)
-  Write-Host '    WinGet installed successfully!' -ForegroundColor Green
+} else {
+    Write-Host '================================================' -ForegroundColor Cyan
+    Write-Host '--> WinGet Installation Skipped' -ForegroundColor Yellow
+    Write-Host '================================================' -ForegroundColor Cyan
+    Write-Host '    Networking is disabled - WinGet requires internet access' -ForegroundColor Yellow
+    Write-Host '    Package installation will be skipped' -ForegroundColor Yellow
 }
 
 Write-Host ''
@@ -830,63 +853,83 @@ Write-Host '    [1/2] Disabling safety warnings for installers...' -ForegroundCo
 New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations' -ErrorAction SilentlyContinue | Out-Null
 New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations' -Name 'ModRiskFileTypes' -Type 'String' -Value '.bat;.exe;.reg;.vbs;.chm;.msi;.js;.cmd' -Force | Out-Null
 
-Write-Host '    [2/2] Applying WinGet settings...' -ForegroundColor Cyan
-# Apply settings.json first so subsequent CLI toggles persist and are not overwritten
-Get-ChildItem -Filter 'settings.json' | Copy-Item -Destination C:\Users\WDAGUtilityAccount\AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json -ErrorAction SilentlyContinue
-winget settings --Enable LocalManifestFiles | Out-Null
-winget settings --Enable LocalArchiveMalwareScanOverride | Out-Null
-Set-WinHomeLocation -GeoID $($script:HostGeoID)
+# WinGet configuration (only if networking is enabled)
+if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+    Write-Host '    [2/2] Applying WinGet settings...' -ForegroundColor Cyan
+    # Apply settings.json first so subsequent CLI toggles persist and are not overwritten
+    Get-ChildItem -Filter 'settings.json' | Copy-Item -Destination C:\Users\WDAGUtilityAccount\AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json -ErrorAction SilentlyContinue
+    winget settings --Enable LocalManifestFiles | Out-Null
+    winget settings --Enable LocalArchiveMalwareScanOverride | Out-Null
+    Set-WinHomeLocation -GeoID $($script:HostGeoID)
+} else {
+    Write-Host '    [2/2] Skipping WinGet settings (networking disabled)...' -ForegroundColor Yellow
+    Set-WinHomeLocation -GeoID $($script:HostGeoID)
+}
 Write-Host '    Configuration completed!' -ForegroundColor Green
 
-# Package Installation (optional SandboxStart feature)
+# Package Installation (optional SandboxStart feature - requires networking)
 `$packageListFile = Get-ChildItem -Filter 'packages.txt' -ErrorAction SilentlyContinue
 if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
-    Write-Host ''
-    Write-Host '================================================' -ForegroundColor Cyan
-    Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
-    Write-Host '================================================' -ForegroundColor Cyan
+    if ("PLACEHOLDER_NETWORKING" -eq "Enable") {
+        Write-Host ''
+        Write-Host '================================================' -ForegroundColor Cyan
+        Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
+        Write-Host '================================================' -ForegroundColor Cyan
 
-    try {
-        `$packages = Get-Content -Path `$packageListFile.FullName -Encoding UTF8 | Where-Object {
-            -not [string]::IsNullOrWhiteSpace(`$_) -and -not `$_.Trim().StartsWith('#')
-        }
-
-        if (`$packages.Count -eq 0) {
-            Write-Host '    No packages found in list.' -ForegroundColor Yellow
-        } else {
-            Write-Host "    Found `$(`$packages.Count) package(s) to install" -ForegroundColor Cyan
-
-            `$installed = 0
-            `$failed = 0
-
-            foreach (`$package in `$packages) {
-                `$packageId = `$package.Trim()
-                Write-Host "    Installing: `$packageId" -ForegroundColor Cyan
-
-                try {
-                    `$result = winget install --id `$packageId --silent --accept-source-agreements --accept-package-agreements 2>&1
-
-                    if (`$LASTEXITCODE -eq 0) {
-                        Write-Host "      SUCCESS: `$packageId" -ForegroundColor Green
-                        `$installed++
-                    } else {
-                        Write-Host "      FAILED: `$packageId (Exit code: `$LASTEXITCODE)" -ForegroundColor Red
-                        `$failed++
-                    }
-                } catch {
-                    Write-Host "      ERROR: `$packageId - `$(`$_.Exception.Message)" -ForegroundColor Red
-                    `$failed++
-                }
+        try {
+            `$packages = Get-Content -Path `$packageListFile.FullName -Encoding UTF8 | Where-Object {
+                -not [string]::IsNullOrWhiteSpace(`$_) -and -not `$_.Trim().StartsWith('#')
             }
 
-            Write-Host ''
-            Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor `$(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
+            if (`$packages.Count -eq 0) {
+                Write-Host '    No packages found in list.' -ForegroundColor Yellow
+            } else {
+                Write-Host "    Found `$(`$packages.Count) package(s) to install" -ForegroundColor Cyan
+
+                `$installed = 0
+                `$failed = 0
+
+                foreach (`$package in `$packages) {
+                    `$packageId = `$package.Trim()
+                    Write-Host "    Installing: `$packageId" -ForegroundColor Cyan
+
+                    try {
+                        `$result = winget install --id `$packageId --silent --accept-source-agreements --accept-package-agreements 2>&1
+
+                        if (`$LASTEXITCODE -eq 0) {
+                            Write-Host "      SUCCESS: `$packageId" -ForegroundColor Green
+                            `$installed++
+                        } else {
+                            Write-Host "      FAILED: `$packageId (Exit code: `$LASTEXITCODE)" -ForegroundColor Red
+                            `$failed++
+                        }
+                    } catch {
+                        Write-Host "      ERROR: `$packageId - `$(`$_.Exception.Message)" -ForegroundColor Red
+                        `$failed++
+                    }
+                }
+
+                Write-Host ''
+                Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor `$(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
+            }
+        } catch {
+            Write-Host "    ERROR reading package list: `$(`$_.Exception.Message)" -ForegroundColor Red
+            Write-Host '    Continuing with user script...' -ForegroundColor Yellow
+        } finally {
+            # Clean up packages.txt file after installation
+            if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
+                Remove-Item -Path `$packageListFile.FullName -Force -ErrorAction SilentlyContinue
+            }
         }
-    } catch {
-        Write-Host "    ERROR reading package list: `$(`$_.Exception.Message)" -ForegroundColor Red
-        Write-Host '    Continuing with user script...' -ForegroundColor Yellow
-    } finally {
-        # Clean up packages.txt file after installation
+    } else {
+        Write-Host ''
+        Write-Host '================================================' -ForegroundColor Cyan
+        Write-Host '--> Package Installation Skipped' -ForegroundColor Yellow
+        Write-Host '================================================' -ForegroundColor Cyan
+        Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
+        Write-Host '    WinGet requires internet access to download packages' -ForegroundColor Yellow
+
+        # Clean up packages.txt file
         if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
             Remove-Item -Path `$packageListFile.FullName -Force -ErrorAction SilentlyContinue
         }

@@ -1005,6 +1005,8 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$chkNetworking.Checked = $true
 		$tooltipNetworking = New-Object System.Windows.Forms.ToolTip
 		$tooltipNetworking.SetToolTip($chkNetworking, "Enable network access in sandbox (required for WinGet downloads)")
+
+		# Add event handler to warn about package lists when networking is disabled
 		$form.Controls.Add($chkNetworking)
 
 		$y += $labelHeight + 5
@@ -1265,6 +1267,27 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$btnOK.Size = New-Object System.Drawing.Size(75, 30)
 		$btnOK.Text = "OK"
 		$btnOK.Add_Click({
+			# Validate networking and package list compatibility
+			if (-not $chkNetworking.Checked) {
+				# Check if package list is selected
+				if ($cmbInstallPackages.SelectedItem -and
+				    $cmbInstallPackages.SelectedItem -ne "" -and
+				    $cmbInstallPackages.SelectedItem -ne "[Create new list...]") {
+
+					$result = [System.Windows.Forms.MessageBox]::Show(
+						"Disabling networking will prevent package installation via WinGet.`n`nPackages require internet access to download.`n`nClick OK to continue without networking, or Cancel to go back.",
+						"Network Required for Packages",
+						"OKCancel",
+						"Warning"
+					)
+
+					# If user clicks Cancel, abort the OK action
+					if ($result -eq "Cancel") {
+						return
+					}
+				}
+			}
+
 			$resultScript = $null
 			if (-not [string]::IsNullOrWhiteSpace($txtScript.Text)) {
 				try { $resultScript = [ScriptBlock]::Create($txtScript.Text) } catch { $resultScript = $null }
