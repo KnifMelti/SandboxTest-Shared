@@ -1403,7 +1403,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$y += $labelHeight + 5 + 120 + 5
 		$lblStatus = New-Object System.Windows.Forms.Label
 		$lblStatus.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$lblStatus.Size = New-Object System.Drawing.Size(($controlWidth - 40), $labelHeight)
+		$lblStatus.Size = New-Object System.Drawing.Size($controlWidth, $labelHeight)
 		$lblStatus.Text = "Status: $initialStatus"
 		$form.Controls.Add($lblStatus)
 
