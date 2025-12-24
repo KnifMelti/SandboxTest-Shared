@@ -373,58 +373,6 @@ function Get-StableWinGetVersions {
 	}
 }
 
-# Helper function to validate WinGet version exists
-function Test-WinGetVersionExists {
-	<#
-	.SYNOPSIS
-	Validates if a WinGet version exists in the GitHub repository
-	
-	.PARAMETER Version
-	The version string to validate (e.g., "1.23", "v1.7.10514")
-	
-	.PARAMETER IncludePrerelease
-	Include prerelease versions in the search
-	
-	.OUTPUTS
-	Boolean indicating if the version exists
-	#>
-	param(
-		[Parameter(Mandatory = $true)]
-		[string]$Version,
-		
-		[Parameter(Mandatory = $false)]
-		[bool]$IncludePrerelease = $false
-	)
-	
-	try {
-		$releasesApiUrl = 'https://api.github.com/repos/microsoft/winget-cli/releases?per_page=100'
-		Write-Verbose "Validating WinGet version: $Version"
-
-		$releases = Invoke-RestMethod -Uri $releasesApiUrl -TimeoutSec 10 -UserAgent "WAU-Settings-GUI" -UseBasicParsing -ErrorAction Stop
-		
-		if (-not $IncludePrerelease) {
-			$releases = $releases | Where-Object { -not $_.prerelease }
-		}
-		
-		# Check if version matches any tag_name (with or without 'v' prefix)
-		$versionPattern = '^v?' + [regex]::Escape($Version)
-		$matchingRelease = $releases | Where-Object { $_.tag_name -match $versionPattern } | Select-Object -First 1
-		
-		if ($matchingRelease) {
-			Write-Verbose "Found matching release: $($matchingRelease.tag_name)"
-			return $true
-		} else {
-			Write-Verbose "No matching release found for version: $Version"
-			return $false
-		}
-	}
-	catch {
-		Write-Warning "Failed to validate WinGet version: $($_.Exception.Message)"
-		# On error, assume version might be valid (fail open)
-		return $true
-	}
-}
-
 # Define the dialog function here since it's needed before the main functions section
 function Show-SandboxTestDialog {
 	<#
