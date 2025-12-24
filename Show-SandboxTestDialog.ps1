@@ -534,7 +534,7 @@ Install.* = Installer.ps1
 		# Create the main form
 		$form = New-Object System.Windows.Forms.Form
 		$form.Text = "Windows Sandbox Test Configuration"
-		$form.Size = New-Object System.Drawing.Size(450, 775)
+		$form.Size = New-Object System.Drawing.Size(450, 725)
 		$form.StartPosition = "CenterScreen"
 		$form.FormBorderStyle = "FixedDialog"
 		$form.MaximizeBox = $false
@@ -962,28 +962,11 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		$y += $labelHeight + 5
 
-		$chkAsync = New-Object System.Windows.Forms.CheckBox
-		$chkAsync.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$chkAsync.Size = New-Object System.Drawing.Size(200, $labelHeight)
-		$chkAsync.Text = "Async (return directly)"
-		$chkAsync.Checked = $true
-		$form.Controls.Add($chkAsync)
-
-		$y += $labelHeight + 5
-
 		$chkVerbose = New-Object System.Windows.Forms.CheckBox
 		$chkVerbose.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$chkVerbose.Size = New-Object System.Drawing.Size(200, $labelHeight)
-		$chkVerbose.Text = "Verbose (screen log)"
+		$chkVerbose.Size = New-Object System.Drawing.Size(300, $labelHeight)
+		$chkVerbose.Text = "Verbose (screen log && wait)"
 		$form.Controls.Add($chkVerbose)
-
-		$y += $labelHeight + 5
-
-		$chkWait = New-Object System.Windows.Forms.CheckBox
-		$chkWait.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$chkWait.Size = New-Object System.Drawing.Size(250, $labelHeight)
-		$chkWait.Text = "Wait (before exit PS window)"
-		$form.Controls.Add($chkWait)
 
 		$y += $labelHeight + $spacing + 10
 
@@ -1314,9 +1297,8 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				                   } else { "" }
 				Prerelease = $chkPrerelease.Checked
 				Clean = $chkClean.Checked
-				Async = $chkAsync.Checked
 				Verbose = $chkVerbose.Checked
-				Wait = $chkWait.Checked
+				Wait = $chkVerbose.Checked
 				Networking = if ($chkNetworking.Checked) { "Enable" } else { "Disable" }
 				MemoryInMB = [int]$cmbMemory.SelectedItem
 				vGPU = $cmbvGPU.SelectedItem
@@ -1385,7 +1367,7 @@ if (![string]::IsNullOrWhiteSpace($dialogResult.InstallPackageList)) {
 }
 if ($dialogResult.Prerelease) { $sandboxParams.Prerelease = $true }
 if ($dialogResult.Clean) { $sandboxParams.Clean = $true }
-if ($dialogResult.Async) { $sandboxParams.Async = $true }
+$sandboxParams.Async = $true
 if ($dialogResult.Verbose) { $sandboxParams.Verbose = $true }
 
 # Add WSB configuration parameters
