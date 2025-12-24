@@ -122,22 +122,33 @@ function Get-PackageListTooltip {
 function Show-PackageListEditor {
 	<#
 	.SYNOPSIS
-	Shows dialog for creating or editing package lists
+	Shows dialog for creating or editing package lists or script mappings
 
 	.PARAMETER ListName
-	Optional list name to edit. If empty, creates new list.
+	Optional list name to edit. If empty, creates new list. Not used in ScriptMapping mode.
+
+	.PARAMETER EditorMode
+	Editor mode: "PackageList" (default) or "ScriptMapping"
 
 	.OUTPUTS
 	Hashtable with DialogResult and ListName
 	#>
 	param(
-		[string]$ListName = ""
+		[string]$ListName = "",
+		[ValidateSet("PackageList", "ScriptMapping")]
+		[string]$EditorMode = "PackageList"
 	)
 
 	# Create editor form
 	$editorForm = New-Object System.Windows.Forms.Form
-	$editorForm.Text = if ($ListName) { "Edit Package List: $ListName" } else { "Create New Package List" }
-	$editorForm.Size = New-Object System.Drawing.Size(420, 370)
+	$editorForm.Text = switch ($EditorMode) {
+		"PackageList" { if ($ListName) { "Edit Package List: $ListName" } else { "Create New Package List" } }
+		"ScriptMapping" { "Edit Script Mappings" }
+	}
+	$editorForm.Size = switch ($EditorMode) {
+		"PackageList" { New-Object System.Drawing.Size(420, 370) }
+		"ScriptMapping" { New-Object System.Drawing.Size(600, 500) }
+	}
 	$editorForm.StartPosition = "CenterParent"
 	$editorForm.FormBorderStyle = "FixedDialog"
 	$editorForm.MaximizeBox = $false
@@ -158,64 +169,97 @@ function Show-PackageListEditor {
 
 	$y = 15
 	$margin = 15
-	$controlWidth = 380
+	$controlWidth = switch ($EditorMode) {
+		"PackageList" { 380 }
+		"ScriptMapping" { 560 }
+	}
 
-	# List name field
-	$lblListName = New-Object System.Windows.Forms.Label
-	$lblListName.Location = New-Object System.Drawing.Point($margin, $y)
-	$lblListName.Size = New-Object System.Drawing.Size(150, 20)
-	$lblListName.Text = "List Name:"
-	$editorForm.Controls.Add($lblListName)
+	# List name field - only for PackageList mode
+	if ($EditorMode -eq "PackageList") {
+		$lblListName = New-Object System.Windows.Forms.Label
+		$lblListName.Location = New-Object System.Drawing.Point($margin, $y)
+		$lblListName.Size = New-Object System.Drawing.Size(150, 20)
+		$lblListName.Text = "List Name:"
+		$editorForm.Controls.Add($lblListName)
 
-	$txtListName = New-Object System.Windows.Forms.TextBox
-	$txtListName.Location = New-Object System.Drawing.Point($margin, ($y + 20))
-	$txtListName.Size = New-Object System.Drawing.Size($controlWidth, 23)
-	$txtListName.Text = $ListName
-	$txtListName.ReadOnly = ($ListName -ne "")
-	$editorForm.Controls.Add($txtListName)
+		$txtListName = New-Object System.Windows.Forms.TextBox
+		$txtListName.Location = New-Object System.Drawing.Point($margin, ($y + 20))
+		$txtListName.Size = New-Object System.Drawing.Size($controlWidth, 23)
+		$txtListName.Text = $ListName
+		$txtListName.ReadOnly = ($ListName -ne "")
+		$editorForm.Controls.Add($txtListName)
 
-	$y += 50
+		$y += 50
+	}
 
-	# Package IDs text area
+	# Content text area
 	$lblPackages = New-Object System.Windows.Forms.Label
 	$lblPackages.Location = New-Object System.Drawing.Point($margin, $y)
 	$lblPackages.Size = New-Object System.Drawing.Size(400, 20)
-	$lblPackages.Text = "Package IDs (one per line):"
+	$lblPackages.Text = switch ($EditorMode) {
+		"PackageList" { "Package IDs (one per line):" }
+		"ScriptMapping" { "Script Mappings Configuration:" }
+	}
 	$editorForm.Controls.Add($lblPackages)
 
 	$txtPackages = New-Object System.Windows.Forms.TextBox
 	$txtPackages.Location = New-Object System.Drawing.Point($margin, ($y + 25))
-	$txtPackages.Size = New-Object System.Drawing.Size($controlWidth, 140)
+	$txtPackages.Size = switch ($EditorMode) {
+		"PackageList" { New-Object System.Drawing.Size($controlWidth, 140) }
+		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 270) }
+	}
 	$txtPackages.Multiline = $true
 	$txtPackages.ScrollBars = "Vertical"
 	$txtPackages.AcceptsReturn = $true
 	$txtPackages.Font = New-Object System.Drawing.Font("Consolas", 9)
+	$txtPackages.WordWrap = ($EditorMode -eq "PackageList")
 	$editorForm.Controls.Add($txtPackages)
 
 	# Load existing content if editing
-	if ($ListName) {
-		$listPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "$ListName.txt"
-		if (Test-Path $listPath) {
-			try {
-				$txtPackages.Text = (Get-Content -Path $listPath -Raw).Trim()
-			}
-			catch {
-				[System.Windows.Forms.MessageBox]::Show("Error loading list: $($_.Exception.Message)", "Load Error", "OK", "Error")
-			}
+	if ($EditorMode -eq "ScriptMapping") {
+		$listPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "script-mappings.txt"
+	} else {
+		$listPath = if ($ListName) { Join-Path (Join-Path $Script:WorkingDir "wsb") "$ListName.txt" } else { $null }
+	}
+
+	if ($listPath -and (Test-Path $listPath)) {
+		try {
+			$txtPackages.Text = (Get-Content -Path $listPath -Raw).Trim()
+		}
+		catch {
+			[System.Windows.Forms.MessageBox]::Show("Error loading: $($_.Exception.Message)", "Load Error", "OK", "Error")
 		}
 	}
 
-	$y += 175
+	$y += switch ($EditorMode) {
+		"PackageList" { 175 }
+		"ScriptMapping" { 320 }
+	}
 
 	# Help text
 	$lblHelp = New-Object System.Windows.Forms.Label
 	$lblHelp.Location = New-Object System.Drawing.Point($margin, $y)
-	$lblHelp.Size = New-Object System.Drawing.Size($controlWidth, 50)
-	$lblHelp.Text = "Example: Notepad++.Notepad++`nUse WinGet package IDs from winget search`nComments: Lines starting with # are ignored"
+	$lblHelp.Size = switch ($EditorMode) {
+		"PackageList" { New-Object System.Drawing.Size($controlWidth, 50) }
+		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 70) }
+	}
+	$lblHelp.Text = switch ($EditorMode) {
+		"PackageList" { "Example: Notepad++.Notepad++`nUse WinGet package IDs from winget search`nComments: Lines starting with # are ignored" }
+		"ScriptMapping" { @"
+Format: FilePattern = ScriptToExecute.ps1
+Example: InstallWSB.cmd = InstallWSB.ps1
+Patterns are matched against folder/file names (case-insensitive).
+Wildcards: * (any characters), ? (single character)
+Comments: Lines starting with # are ignored.
+"@ }
+	}
 	$lblHelp.ForeColor = [System.Drawing.Color]::Gray
 	$editorForm.Controls.Add($lblHelp)
 
-	$y += 50
+	$y += switch ($EditorMode) {
+		"PackageList" { 50 }
+		"ScriptMapping" { 90 }
+	}
 
 	# Buttons
 	$btnSave = New-Object System.Windows.Forms.Button
@@ -223,37 +267,49 @@ function Show-PackageListEditor {
 	$btnSave.Size = New-Object System.Drawing.Size(75, 30)
 	$btnSave.Text = "Save"
 	$btnSave.Add_Click({
-		$listNameValue = $txtListName.Text.Trim()
+		if ($EditorMode -eq "PackageList") {
+			# PackageList mode - validate and get list name
+			$listNameValue = $txtListName.Text.Trim()
 
-		# Validate list name
-		if ([string]::IsNullOrWhiteSpace($listNameValue)) {
-			[System.Windows.Forms.MessageBox]::Show("Please enter a list name.", "Validation Error", "OK", "Warning")
-			return
-		}
+			# Validate list name
+			if ([string]::IsNullOrWhiteSpace($listNameValue)) {
+				[System.Windows.Forms.MessageBox]::Show("Please enter a list name.", "Validation Error", "OK", "Warning")
+				return
+			}
 
-		# Check for invalid filename characters
-		$invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
-		if ($listNameValue.IndexOfAny($invalidChars) -ge 0) {
-			[System.Windows.Forms.MessageBox]::Show("List name contains invalid characters.", "Validation Error", "OK", "Warning")
-			return
-		}
+			# Check for invalid filename characters
+			$invalidChars = [System.IO.Path]::GetInvalidFileNameChars()
+			if ($listNameValue.IndexOfAny($invalidChars) -ge 0) {
+				[System.Windows.Forms.MessageBox]::Show("List name contains invalid characters.", "Validation Error", "OK", "Warning")
+				return
+			}
 
-		# Prevent overwriting script-mappings.txt
-		if ($listNameValue -eq "script-mappings") {
-			[System.Windows.Forms.MessageBox]::Show("Cannot use reserved name 'script-mappings'.", "Validation Error", "OK", "Warning")
-			return
+			# Prevent overwriting script-mappings.txt
+			if ($listNameValue -eq "script-mappings") {
+				[System.Windows.Forms.MessageBox]::Show("Cannot use reserved name 'script-mappings'.", "Validation Error", "OK", "Warning")
+				return
+			}
+
+			$wsbDir = Join-Path $Script:WorkingDir "wsb"
+			if (-not (Test-Path $wsbDir)) {
+				New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
+			}
+
+			$listPath = Join-Path $wsbDir "$listNameValue.txt"
+		} else {
+			# ScriptMapping mode - direct to script-mappings.txt
+			$wsbDir = Join-Path $Script:WorkingDir "wsb"
+			if (-not (Test-Path $wsbDir)) {
+				New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
+			}
+			$listPath = Join-Path $wsbDir "script-mappings.txt"
+			$listNameValue = "script-mappings"
 		}
 
 		# Save the file
-		$wsbDir = Join-Path $Script:WorkingDir "wsb"
-		if (-not (Test-Path $wsbDir)) {
-			New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
-		}
-
-		$listPath = Join-Path $wsbDir "$listNameValue.txt"
 		try {
 			$packageContent = $txtPackages.Text.Trim()
-			Set-Content -Path $listPath -Value $packageContent
+			Set-Content -Path $listPath -Value $packageContent -Encoding UTF8
 
 			$script:__editorReturn = @{
 				DialogResult = 'OK'
@@ -262,7 +318,7 @@ function Show-PackageListEditor {
 			$editorForm.Close()
 		}
 		catch {
-			[System.Windows.Forms.MessageBox]::Show("Error saving list: $($_.Exception.Message)", "Save Error", "OK", "Error")
+			[System.Windows.Forms.MessageBox]::Show("Error saving: $($_.Exception.Message)", "Save Error", "OK", "Error")
 		}
 	})
 	$editorForm.Controls.Add($btnSave)
@@ -1280,6 +1336,20 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		})
 		$form.Controls.Add($btnSaveScript)
 
+		# Script Mapping Editor button (small, above Save As button)
+		$btnEditMappings = New-Object System.Windows.Forms.Button
+		$btnEditMappings.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 30), ($y - 25))
+		$btnEditMappings.Size = New-Object System.Drawing.Size(30, 20)
+		$btnEditMappings.Text = "..."
+		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+		$tooltipMappings = New-Object System.Windows.Forms.ToolTip
+		$tooltipMappings.SetToolTip($btnEditMappings, "Edit mappings...")
+		$btnEditMappings.Add_Click({
+			Show-PackageListEditor -EditorMode "ScriptMapping" | Out-Null
+			# No need to refresh anything - mappings are read when folder is selected
+		})
+		$form.Controls.Add($btnEditMappings)
+
 		$btnSaveAsScript = New-Object System.Windows.Forms.Button
 		$btnSaveAsScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 75), $y)
 		$btnSaveAsScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
@@ -1332,7 +1402,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$y += $labelHeight + 5 + 120 + 5
 		$lblStatus = New-Object System.Windows.Forms.Label
 		$lblStatus.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$lblStatus.Size = New-Object System.Drawing.Size($controlWidth, $labelHeight)
+		$lblStatus.Size = New-Object System.Drawing.Size(($controlWidth - 40), $labelHeight)
 		$lblStatus.Text = "Status: $initialStatus"
 		$form.Controls.Add($lblStatus)
 
