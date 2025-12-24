@@ -474,7 +474,7 @@ Start-Process cmd.exe -ArgumentList "/c del /Q `"$env:USERPROFILE\Desktop\$Sandb
 '@
 				"WinGetManifest" = @'
 $SandboxFolderName = "DefaultFolder"
-Start-Process cmd.exe -ArgumentList "/k cd /d `"$env:USERPROFILE\Desktop\$SandboxFolderName`" && winget install --manifest . --accept-source-agreements --accept-package-agreements"
+Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", "Set-Location C:\; winget validate '$env:USERPROFILE\Desktop\$SandboxFolderName'; Read-Host 'Press Enter to install local manifest'; winget install --manifest '$env:USERPROFILE\Desktop\$SandboxFolderName' --accept-source-agreements --accept-package-agreements; Read-Host 'Press Enter to exit'; exit"
 '@
 				"Installer" = @'
 $SandboxFolderName = "DefaultFolder"
@@ -1189,6 +1189,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$txtScript.Size = New-Object System.Drawing.Size($controlWidth, 120)
 		$txtScript.Multiline = $true
 		$txtScript.ScrollBars = "Vertical"
+		$txtScript.AcceptsReturn = $true
 
 		# Set default script based on folder contents
 		try {
