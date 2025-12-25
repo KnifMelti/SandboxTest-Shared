@@ -837,6 +837,10 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		# Selection change event
 		$cmbInstallPackages.Add_SelectedIndexChanged({
+			# Enable/disable Edit button based on selection
+			$selectedItem = $this.SelectedItem
+			$btnEditPackages.Enabled = ($selectedItem -ne "" -and $selectedItem -ne "[Create new list...]")
+
 			if ($this.SelectedItem -eq "[Create new list...]") {
 				$result = Show-PackageListEditor
 
@@ -866,6 +870,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$btnEditPackages.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 75), ($y + $labelHeight))
 		$btnEditPackages.Size = New-Object System.Drawing.Size(75, $controlHeight)
 		$btnEditPackages.Text = "Edit..."
+		$btnEditPackages.Enabled = $false  # Initially disabled until a valid package list is selected
 		$btnEditPackages.Add_Click({
 			$selectedList = $cmbInstallPackages.SelectedItem
 
@@ -1018,7 +1023,9 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 			# Enable/disable all WinGet-related controls
 			$cmbInstallPackages.Enabled = $enabled
-			$btnEditPackages.Enabled = $enabled
+			# Edit button requires both networking enabled AND a valid package list selected
+			$selectedItem = $cmbInstallPackages.SelectedItem
+			$btnEditPackages.Enabled = $enabled -and ($selectedItem -ne "" -and $selectedItem -ne "[Create new list...]")
 			$cmbWinGetVersion.Enabled = $enabled -and -not $chkPrerelease.Checked
 			$chkPrerelease.Enabled = $enabled
 			$chkClean.Enabled = $enabled
@@ -1244,7 +1251,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$btnLoadScript = New-Object System.Windows.Forms.Button
 		$btnLoadScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 235), $y)
 		$btnLoadScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
-		$btnLoadScript.Text = "Load"
+		$btnLoadScript.Text = "Load..."
 		$btnLoadScript.Add_Click({
 			$openFileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$openFileDialog.InitialDirectory = $wsbDir
@@ -1339,8 +1346,8 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		# Script Mapping Editor button (small, above Save As button)
 		$btnEditMappings = New-Object System.Windows.Forms.Button
-		$btnEditMappings.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 30), ($y - 25))
-		$btnEditMappings.Size = New-Object System.Drawing.Size(30, 20)
+		$btnEditMappings.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 38), ($y - 25))
+		$btnEditMappings.Size = New-Object System.Drawing.Size(38, 20)
 		$btnEditMappings.Text = "..."
 		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 		$tooltipMappings = New-Object System.Windows.Forms.ToolTip
@@ -1354,7 +1361,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$btnSaveAsScript = New-Object System.Windows.Forms.Button
 		$btnSaveAsScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 75), $y)
 		$btnSaveAsScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
-		$btnSaveAsScript.Text = "Save As"
+		$btnSaveAsScript.Text = "Save as..."
 		$btnSaveAsScript.Add_Click({
 			if ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
 				[System.Windows.Forms.MessageBox]::Show("No script content to save.", "Save Error", "OK", "Warning")
