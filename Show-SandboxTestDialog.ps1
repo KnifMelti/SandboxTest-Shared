@@ -31,7 +31,7 @@ InstallWSB.cmd = InstallWSB.ps1
 *.installer.yaml = WinGetManifest.ps1
 *.* = Installer.ps1
 "@
-		Set-Content -Path $mappingFile -Value $defaultContent
+		Set-Content -Path $mappingFile -Value $defaultContent -Encoding ASCII
 	}
 	
 	# Read and parse mapping file
@@ -308,7 +308,7 @@ Comments: Lines starting with # are ignored.
 		# Save the file
 		try {
 			$packageContent = $txtPackages.Text.Trim()
-			Set-Content -Path $listPath -Value $packageContent
+			Set-Content -Path $listPath -Value $packageContent -Encoding ASCII
 
 			$script:__editorReturn = @{
 				DialogResult = 'OK'
@@ -521,7 +521,7 @@ Start-Process explorer.exe -ArgumentList "`"$sandboxPath`""
 				# Create the file if it doesn't exist
 				if (-not (Test-Path $scriptPath)) {
 					try {
-						$hardcodedDefaults[$ScriptName] | Out-File -FilePath $scriptPath
+						$hardcodedDefaults[$ScriptName] | Out-File -FilePath $scriptPath -Encoding ASCII
 						Write-Verbose "Created default script file: $scriptPath"
 					}
 					catch {
@@ -558,7 +558,7 @@ InstallWSB.cmd = InstallWSB.ps1
 *.installer.yaml = WinGetManifest.ps1
 *.* = Installer.ps1
 "@
-			Set-Content -Path $mappingFile -Value $defaultMappingContent
+			Set-Content -Path $mappingFile -Value $defaultMappingContent -Encoding ASCII
 		}
 
 		# Load embedded icon
@@ -1307,7 +1307,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			# If we have a current file, save directly
 			if ($script:currentScriptFile -and (Test-Path (Split-Path $script:currentScriptFile -Parent))) {
 				try {
-					$txtScript.Text | Out-File -FilePath $script:currentScriptFile
+					$txtScript.Text | Out-File -FilePath $script:currentScriptFile -Encoding ASCII
 					[System.Windows.Forms.MessageBox]::Show("Script saved successfully to:`n$($script:currentScriptFile)", "Save Complete", "OK", "Information")
 				}
 				catch {
@@ -1335,7 +1335,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 						if (-not (Test-Path $wsbDir)) {
 							New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 						}
-						$txtScript.Text | Out-File -FilePath $targetPath
+						$txtScript.Text | Out-File -FilePath $targetPath -Encoding ASCII
 
 						# Update current file tracking
 						$script:currentScriptFile = $targetPath
@@ -1398,7 +1398,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 					if (-not (Test-Path $wsbDir)) {
 						New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 					}
-					$txtScript.Text | Out-File -FilePath $targetPath
+					$txtScript.Text | Out-File -FilePath $targetPath -Encoding ASCII
 
 					# Update current file tracking
 					$script:currentScriptFile = $targetPath
