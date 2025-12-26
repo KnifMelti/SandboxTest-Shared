@@ -955,7 +955,7 @@ Write-Host "================================================" -ForegroundColor C
 Write-Host ""
 Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"@ | Out-File -FilePath $(Join-Path -Path $script:TestDataFolder -ChildPath "$script:ScriptName.ps1")
+"@ | Out-File -FilePath $(Join-Path -Path $script:TestDataFolder -ChildPath "$script:ScriptName.ps1") -Encoding ASCII -Force
 
                 Write-Verbose 'Creating WSB file for launching the sandbox'
                 $mappedFolders = @"
@@ -989,7 +989,7 @@ $mappedFolders
   <Command>PowerShell Start-Process PowerShell -WindowStyle Maximized -WorkingDirectory '$($script:SandboxWorkingDirectory)' -ArgumentList '-ExecutionPolicy Bypass -File $($script:SandboxBootstrapFile)'</Command>
   </LogonCommand>
 </Configuration>
-"@ | Out-File -FilePath $script:ConfigurationFile
+"@ | Out-File -FilePath $script:ConfigurationFile -Encoding ASCII -Force
     Write-Verbose "WSB configuration written to: $script:ConfigurationFile"
 
         $mappedDirsInfo = "      - $($script:TestDataFolder) as read-and-write"

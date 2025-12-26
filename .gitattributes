@@ -1,0 +1,8 @@
+# Enforce Windows line endings (CRLF) for PowerShell and WSB files
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.wsb text eol=crlf
+*.txt text eol=crlf
+
+# Ensure consistent line endings for documentation
+*.md text eol=lf
