@@ -36,7 +36,7 @@ InstallWSB.cmd = InstallWSB.ps1
 	
 	# Read and parse mapping file
 	try {
-		$lines = Get-Content -Path $mappingFile -Encoding UTF8 -ErrorAction Stop
+		$lines = Get-Content -Path $mappingFile -ErrorAction Stop
 		
 		foreach ($line in $lines) {
 			$line = $line.Trim()
@@ -308,7 +308,7 @@ Comments: Lines starting with # are ignored.
 		# Save the file
 		try {
 			$packageContent = $txtPackages.Text.Trim()
-			Set-Content -Path $listPath -Value $packageContent -Encoding UTF8
+			Set-Content -Path $listPath -Value $packageContent
 
 			$script:__editorReturn = @{
 				DialogResult = 'OK'
@@ -458,7 +458,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			# Try to load from disk first
 			if (Test-Path $scriptPath) {
 				try {
-					return Get-Content -Path $scriptPath -Raw -Encoding UTF8
+					return Get-Content -Path $scriptPath -Raw
 				}
 				catch {
 					Write-Warning "Failed to load $scriptPath from disk : $($_.Exception.Message). Using hardcoded default."
@@ -1266,7 +1266,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 			if ($openFileDialog.ShowDialog() -eq "OK") {
 				try {
-					$scriptContent = Get-Content -Path $openFileDialog.FileName -Raw -Encoding UTF8
+					$scriptContent = Get-Content -Path $openFileDialog.FileName -Raw
 					$txtScript.Text = $scriptContent
 
 					# Track the loaded file for the Save button
