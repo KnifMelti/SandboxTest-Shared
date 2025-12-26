@@ -29,8 +29,7 @@ function Get-ScriptMappings {
 
 InstallWSB.cmd = InstallWSB.ps1
 *.installer.yaml = WinGetManifest.ps1
-Install.* = Installer.ps1
-*.* = Explorer.ps1
+*.* = Installer.ps1
 "@
 		Set-Content -Path $mappingFile -Value $defaultContent -Encoding ASCII
 	}
@@ -70,7 +69,7 @@ Install.* = Installer.ps1
 	if (-not ($mappings | Where-Object { $_.Pattern -eq "*.*" })) {
 		$mappings += @{
 			Pattern = "*.*"
-			Script = "Explorer.ps1"
+			Script = "Installer.ps1"
 		}
 	}
 	
@@ -381,7 +380,7 @@ function Find-MatchingScript {
 	if ($fallback) {
 		return $fallback.Script
 	} else {
-		return "Explorer.ps1"
+		return "Installer.ps1"
 	}
 }
 
@@ -481,32 +480,40 @@ $SandboxFolderName = "DefaultFolder"
 $sandboxPath = "$env:USERPROFILE\Desktop\$SandboxFolderName"
 
 # Look for installer files (priority order)
+# Note: Get-ChildItem -Filter is case-insensitive on Windows
+# "Setup.exe" will match Setup.exe, setup.exe, SETUP.EXE, etc.
 $installers = @(
-"Install.cmd","install.cmd","INSTALL.CMD",
-"Install.bat","install.bat","INSTALL.BAT",
-"Setup.exe","setup.exe","SETUP.EXE",
-"Install.exe","install.exe","INSTALL.EXE",
-"Installer.exe","installer.exe","INSTALLER.EXE"
+"Install.cmd",
+"Install.bat",
+"Setup.cmd",
+"Setup.bat",
+"Setup.exe",
+"Install.exe",
+"Installer.exe",
+"Setup.msi",
+"Install.msi",
+"Installer.msi"
 )
 $found = $null
 foreach ($file in $installers) {
-$path = Join-Path $sandboxPath $file
-if (Test-Path $path) { $found = $file; break }
+$matches = Get-ChildItem -Path $sandboxPath -Filter $file -File -ErrorAction SilentlyContinue
+if ($matches) {
+	$found = $matches[0].Name
+	break
+}
 }
 
 if ($found) {
 if ($found -like "*.cmd" -or $found -like "*.bat") {
 	Start-Process cmd.exe -ArgumentList "/c cd /d `"$sandboxPath`" && `"$found`""
+} elseif ($found -like "*.msi") {
+	Start-Process msiexec.exe -ArgumentList "/i `"$sandboxPath\$found`""
 } else {
 	Start-Process "$sandboxPath\$found" -WorkingDirectory $sandboxPath
 }
 } else {
 Start-Process explorer.exe -ArgumentList "`"$sandboxPath`""
 }
-'@
-				"Explorer" = @'
-$SandboxFolderName = "DefaultFolder"
-Start-Process explorer.exe -ArgumentList "`"$env:USERPROFILE\Desktop\$SandboxFolderName`""
 '@
 			}
 
@@ -549,8 +556,7 @@ Start-Process explorer.exe -ArgumentList "`"$env:USERPROFILE\Desktop\$SandboxFol
 
 InstallWSB.cmd = InstallWSB.ps1
 *.installer.yaml = WinGetManifest.ps1
-Install.* = Installer.ps1
-*.* = Explorer.ps1
+*.* = Installer.ps1
 "@
 			Set-Content -Path $mappingFile -Value $defaultMappingContent -Encoding ASCII
 		}
@@ -668,10 +674,10 @@ Install.* = Installer.ps1
 				# Load script using the new dynamic loading function
 				$scriptContent = Get-DefaultScriptContent -ScriptName $scriptName -WsbDir $wsbDir
 
-				# Fallback to Explorer if script not found
+				# Fallback to Installer if script not found
 				if ([string]::IsNullOrWhiteSpace($scriptContent)) {
-					$scriptContent = Get-DefaultScriptContent -ScriptName "Explorer" -WsbDir $wsbDir
-					$lblStatus.Text = "Status: Mapping fallback to Explorer.ps1"
+					$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
+					$lblStatus.Text = "Status: Mapping fallback to Installer.ps1"
 				} else {
 					$lblStatus.Text = "Status: Mapping -> $matchingScript"
 				}
@@ -1220,9 +1226,9 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
 				$initialStatus = "Auto default: Installer.ps1 (mapping matched)"
 			} else {
-				$selectedScriptName = "Explorer"
-				$script:currentScriptFile = Join-Path $wsbDir "Explorer.ps1"
-				$initialStatus = "Auto default: Explorer.ps1"
+				$selectedScriptName = "Installer"
+				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
+				$initialStatus = "Auto default: Installer.ps1"
 			}
 
 			# Load the selected script using dynamic loading
@@ -1234,11 +1240,11 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			}
 		}
 		catch {
-			# Fallback to Explorer script if anything goes wrong
-			$selectedScriptName = "Explorer"
-			$script:currentScriptFile = Join-Path $wsbDir "Explorer.ps1"
-			$initialStatus = "Auto default: Explorer.ps1 (error during detection)"
-			$scriptContent = Get-DefaultScriptContent -ScriptName "Explorer" -WsbDir $wsbDir
+			# Fallback to Installer script if anything goes wrong
+			$selectedScriptName = "Installer"
+			$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
+			$initialStatus = "Auto default: Installer.ps1 (error during detection)"
+			$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
 			if ($scriptContent) {
 				$txtScript.Text = $scriptContent
 			} else {
