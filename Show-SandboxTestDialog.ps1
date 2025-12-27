@@ -1223,23 +1223,14 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		# Script section
 		# Clear script button (X)
 		$btnClearScript = New-Object System.Windows.Forms.Button
-		$btnClearScript.Location = New-Object System.Drawing.Point(($leftMargin - 1), ($y + 5))
+		$btnClearScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 18), ($y + 5))
 		$btnClearScript.Size = New-Object System.Drawing.Size(18, 18)
-		$btnClearScript.Text = ""
-
-		# Draw X on button
-		$btnClearScript.Add_Paint({
-			param($btn, $paintArgs)
-			$pen = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, 1)
-			# Draw X (two diagonal lines) - smaller, centered
-			$paintArgs.Graphics.DrawLine($pen, 4, 4, 12, 12)
-			$paintArgs.Graphics.DrawLine($pen, 12, 4, 4, 12)
-			$pen.Dispose()
-		})
+		$btnClearScript.Text = [char]0x2716
+		$btnClearScript.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 9, [System.Drawing.FontStyle]::Regular)
 
 		# Tooltip
 		$tooltipClearScript = New-Object System.Windows.Forms.ToolTip
-		$tooltipClearScript.SetToolTip($btnClearScript, "Click to clear script editor")
+		$tooltipClearScript.SetToolTip($btnClearScript, "Clear editor")
 
 		# Click event
 		$btnClearScript.Add_Click({
@@ -1251,12 +1242,23 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		$form.Controls.Add($btnClearScript)
 
-		# Script label
-		$lblScript = New-Object System.Windows.Forms.Label
-		$lblScript.Location = New-Object System.Drawing.Point(($leftMargin + 22), ($y + 8))
-		$lblScript.Size = New-Object System.Drawing.Size(50, ($labelHeight - 4))
-		$lblScript.Text = "Script:"
-		$form.Controls.Add($lblScript)
+		# Edit mappings button (pen icon)
+		$btnEditMappings = New-Object System.Windows.Forms.Button
+		$btnEditMappings.Location = New-Object System.Drawing.Point(19, ($y + 5))
+		$btnEditMappings.Size = New-Object System.Drawing.Size(18, 18)
+		$btnEditMappings.Text = [char]0x270E
+		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 9, [System.Drawing.FontStyle]::Regular)
+
+		# Tooltip
+		$tooltipEditMappings = New-Object System.Windows.Forms.ToolTip
+		$tooltipEditMappings.SetToolTip($btnEditMappings, "Edit mappings...")
+
+		# Click event
+		$btnEditMappings.Add_Click({
+			Show-PackageListEditor -EditorMode "ScriptMapping" | Out-Null
+		})
+
+		$form.Controls.Add($btnEditMappings)
 
 		# Create the script textbox first (before buttons) so buttons appear on top
 		$txtScript = New-Object System.Windows.Forms.TextBox
@@ -1265,6 +1267,10 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$txtScript.Multiline = $true
 		$txtScript.ScrollBars = "Vertical"
 		$txtScript.AcceptsReturn = $true
+
+		# Tooltip for script editor
+		$tooltipScript = New-Object System.Windows.Forms.ToolTip
+		$tooltipScript.SetToolTip($txtScript, "User script that will be executed in Windows Sandbox")
 
 		# Set default script based on folder contents
 		try {
@@ -1329,7 +1335,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 		# Load/Save buttons for scripts (added after txtScript so they appear on top)
 		$btnLoadScript = New-Object System.Windows.Forms.Button
-		$btnLoadScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 235), $y)
+		$btnLoadScript.Location = New-Object System.Drawing.Point(103, $y)
 		$btnLoadScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
 		$btnLoadScript.Text = "Load..."
 		$btnLoadScript.Add_Click({
@@ -1367,16 +1373,21 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 					} else {
 						$btnSaveScript.Enabled = $true
 					}
+
+					# Update status to show loaded script
+					$scriptFileName = [System.IO.Path]::GetFileName($openFileDialog.FileName)
+					$lblStatus.Text = "Status: Loaded $scriptFileName"
 				}
 				catch {
 					[System.Windows.Forms.MessageBox]::Show("Error loading script: $($_.Exception.Message)", "Load Error", "OK", "Error")
+					$lblStatus.Text = "Status: Error loading script"
 				}
 			}
 		})
 		$form.Controls.Add($btnLoadScript)
 
 		$btnSaveScript = New-Object System.Windows.Forms.Button
-		$btnSaveScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 155), $y)
+		$btnSaveScript.Location = New-Object System.Drawing.Point(183, $y)
 		$btnSaveScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
 		$btnSaveScript.Text = "Save"
 		$btnSaveScript.Add_Click({
@@ -1455,22 +1466,9 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			}
 		})
 
-		# Script Mapping Editor button (small, above Save As button)
-		$btnEditMappings = New-Object System.Windows.Forms.Button
-		$btnEditMappings.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 38), ($y - 25))
-		$btnEditMappings.Size = New-Object System.Drawing.Size(38, 20)
-		$btnEditMappings.Text = "..."
-		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-		$tooltipMappings = New-Object System.Windows.Forms.ToolTip
-		$tooltipMappings.SetToolTip($btnEditMappings, "Edit mappings...")
-		$btnEditMappings.Add_Click({
-			Show-PackageListEditor -EditorMode "ScriptMapping" | Out-Null
-			# No need to refresh anything - mappings are read when folder is selected
-		})
-		$form.Controls.Add($btnEditMappings)
 
 		$btnSaveAsScript = New-Object System.Windows.Forms.Button
-		$btnSaveAsScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 75), $y)
+		$btnSaveAsScript.Location = New-Object System.Drawing.Point(263, $y)
 		$btnSaveAsScript.Size = New-Object System.Drawing.Size(75, $controlHeight)
 		$btnSaveAsScript.Text = "Save as..."
 		$btnSaveAsScript.Add_Click({
