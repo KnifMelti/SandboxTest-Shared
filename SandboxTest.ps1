@@ -773,7 +773,12 @@ if ($installLocation) {
             }
 
             # Write combined script to BoundParameterScript.ps1
-            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding UTF8
+            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding ASCII
+        } else {
+            # Create BoundParameterScript with ONLY pre-install initialization (no user script)
+            # This prevents old user scripts from persisting when script editor is cleared
+            $fullScript = "# Pre-Install Initialization`r`n" + $sandboxPreInstallScript
+            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding ASCII
         }
 
         Write-Verbose 'Creating the script for bootstrapping the sandbox'
@@ -878,7 +883,7 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
         Write-Host '================================================' -ForegroundColor Cyan
 
         try {
-            `$packages = Get-Content -Path `$packageListFile.FullName -Encoding UTF8 | Where-Object {
+            `$packages = Get-Content -Path `$packageListFile.FullName -Encoding ASCII | Where-Object {
                 -not [string]::IsNullOrWhiteSpace(`$_) -and -not `$_.Trim().StartsWith('#')
             }
 
@@ -939,10 +944,17 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
 
 `$BoundParameterScript = Get-ChildItem -Filter 'BoundParameterScript.ps1'
 if (`$BoundParameterScript) {
-    Write-Host ""
-    Write-Host "================================================" -ForegroundColor Cyan
-    Write-Host "--> Running user script (WSB initialization)" -ForegroundColor Yellow
-    Write-Host "================================================" -ForegroundColor Cyan
+    # Check if the script contains a user script section
+    `$scriptContent = Get-Content `$BoundParameterScript.FullName -Raw
+    `$hasUserScript = `$scriptContent -match '# User Script'
+
+    if (`$hasUserScript) {
+        Write-Host ""
+        Write-Host "================================================" -ForegroundColor Cyan
+        Write-Host "--> Running user script (WSB initialization)" -ForegroundColor Yellow
+        Write-Host "================================================" -ForegroundColor Cyan
+    }
+
     & `$BoundParameterScript.FullName | Out-Host
 }
 
