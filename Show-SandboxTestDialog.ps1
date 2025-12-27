@@ -1221,26 +1221,41 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$script:currentScriptFile = $null
 
 		# Script section
-		$lblScript = New-Object System.Windows.Forms.Label
-		$lblScript.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$lblScript.Size = New-Object System.Drawing.Size(50, $labelHeight)
-		$lblScript.Text = "[Script:]"
-		$lblScript.Font = New-Object System.Drawing.Font($lblScript.Font.FontFamily, $lblScript.Font.Size, [System.Drawing.FontStyle]::Underline)
-		$lblScript.ForeColor = [System.Drawing.Color]::Blue
-		$lblScript.Cursor = [System.Windows.Forms.Cursors]::Hand
+		# Clear script button (X)
+		$btnClearScript = New-Object System.Windows.Forms.Button
+		$btnClearScript.Location = New-Object System.Drawing.Point(($leftMargin - 1), ($y + 5))
+		$btnClearScript.Size = New-Object System.Drawing.Size(18, 18)
+		$btnClearScript.Text = ""
+
+		# Draw X on button
+		$btnClearScript.Add_Paint({
+			param($btn, $paintArgs)
+			$pen = New-Object System.Drawing.Pen([System.Drawing.Color]::Black, 1)
+			# Draw X (two diagonal lines) - smaller, centered
+			$paintArgs.Graphics.DrawLine($pen, 4, 4, 12, 12)
+			$paintArgs.Graphics.DrawLine($pen, 12, 4, 4, 12)
+			$pen.Dispose()
+		})
 
 		# Tooltip
-		$tooltipScriptLabel = New-Object System.Windows.Forms.ToolTip
-		$tooltipScriptLabel.SetToolTip($lblScript, "Click to clear script editor")
+		$tooltipClearScript = New-Object System.Windows.Forms.ToolTip
+		$tooltipClearScript.SetToolTip($btnClearScript, "Click to clear script editor")
 
 		# Click event
-		$lblScript.Add_Click({
+		$btnClearScript.Add_Click({
 			$txtScript.Text = ""
 			$script:currentScriptFile = $null
-			$btnSaveScript.Enabled = $false  # Inaktivera Save när editorn är tom
+			$btnSaveScript.Enabled = $false
 			$lblStatus.Text = "Status: Script editor cleared"
 		})
 
+		$form.Controls.Add($btnClearScript)
+
+		# Script label
+		$lblScript = New-Object System.Windows.Forms.Label
+		$lblScript.Location = New-Object System.Drawing.Point(($leftMargin + 22), ($y + 8))
+		$lblScript.Size = New-Object System.Drawing.Size(50, ($labelHeight - 4))
+		$lblScript.Text = "Script:"
 		$form.Controls.Add($lblScript)
 
 		# Create the script textbox first (before buttons) so buttons appear on top
