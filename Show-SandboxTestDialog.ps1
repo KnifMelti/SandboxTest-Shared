@@ -1290,11 +1290,17 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 				$selectedScriptName = "WinGetManifest"
 				$script:currentScriptFile = Join-Path $wsbDir "WinGetManifest.ps1"
 				$autoDetectedStatus = "Auto-loaded: WinGetManifest.ps1 (*.installer.yaml found)"
-			} elseif ($matchingScriptInit -eq 'Installer.ps1') {
-				$selectedScriptName = "Installer"
-				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
-				$autoDetectedStatus = "Auto-loaded: Installer.ps1"
+			} elseif ($matchingScriptInit) {
+				# Use whatever script the mapping system returned
+				$selectedScriptName = $matchingScriptInit.Replace('.ps1', '')
+				$script:currentScriptFile = Join-Path $wsbDir $matchingScriptInit
+				if ($matchingScriptInit -eq 'Installer.ps1') {
+					$autoDetectedStatus = "Auto-loaded: Installer.ps1 (default)"
+				} else {
+					$autoDetectedStatus = "Auto-loaded: $matchingScriptInit (from mapping)"
+				}
 			} else {
+				# True fallback - only if Find-MatchingScript returns nothing
 				$selectedScriptName = "Installer"
 				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
 				$autoDetectedStatus = "Auto-loaded: Installer.ps1 (default)"
