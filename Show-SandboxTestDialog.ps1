@@ -467,6 +467,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			}
 
 			try {
+				# Suppress progress bar
+				$oldProgressPreference = $ProgressPreference
+				$ProgressPreference = 'SilentlyContinue'
+
 				# Get folder contents from GitHub API
 				$apiUrl = "https://api.github.com/repos/$GitHubRepo/contents/$GitHubFolder`?ref=$Branch"
 				$files = Invoke-RestMethod -Uri $apiUrl -Headers @{'User-Agent'='PowerShell'}
@@ -480,18 +484,29 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					# Download from raw URL
 					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
 
+					# Normalize remote content to CRLF for Windows
+					$remoteContentNormalized = $remoteContent -replace "`r`n", "`n"  # First normalize to LF
+					$remoteContentNormalized = $remoteContentNormalized -replace "`n", "`r`n"  # Then convert to CRLF
+
 					if (Test-Path $localPath) {
 						$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
 
-						if ($remoteContent -eq $localContent) {
+						# Compare normalized content
+						if ($remoteContentNormalized -eq $localContent) {
 							continue
 						}
 					}
 
-					$remoteContent | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+					# Save with CRLF line endings
+					$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
 				}
 
+				# Restore progress preference
+				$ProgressPreference = $oldProgressPreference
+
 			} catch {
+				# Restore progress preference on error
+				if ($oldProgressPreference) { $ProgressPreference = $oldProgressPreference }
 				# Silent fail - fallback to local files
 			}
 		}
