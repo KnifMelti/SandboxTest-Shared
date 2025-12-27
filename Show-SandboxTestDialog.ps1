@@ -446,6 +446,66 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 "@
 
 	try {
+		# Function to download and update all .ps1 scripts from a GitHub folder
+		function Update-ScriptsFromGitHub {
+			param(
+				[Parameter(Mandatory)]
+				[string]$GitHubRepo,  # Format: 'owner/repo'
+
+				[Parameter(Mandatory)]
+				[string]$GitHubFolder,  # Format: 'path/to/folder'
+
+				[Parameter(Mandatory)]
+				[string]$LocalFolder,
+
+				[string]$Branch = 'master'
+			)
+
+			# Ensure local folder exists
+			if (!(Test-Path $LocalFolder)) {
+				New-Item -Path $LocalFolder -ItemType Directory -Force | Out-Null
+			}
+
+			try {
+				# Get folder contents from GitHub API
+				$apiUrl = "https://api.github.com/repos/$GitHubRepo/contents/$GitHubFolder`?ref=$Branch"
+				$files = Invoke-RestMethod -Uri $apiUrl -Headers @{'User-Agent'='PowerShell'}
+
+				# Filter for .ps1 files
+				$ps1Files = $files | Where-Object { $_.name -like '*.ps1' -and $_.type -eq 'file' }
+
+				foreach ($file in $ps1Files) {
+					$localPath = Join-Path $LocalFolder $file.name
+
+					# Download from raw URL
+					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
+
+					if (Test-Path $localPath) {
+						$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
+
+						if ($remoteContent -eq $localContent) {
+							continue
+						}
+					}
+
+					$remoteContent | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+				}
+
+			} catch {
+				# Silent fail - fallback to local files
+			}
+		}
+
+		# Function to check if current script is a default script
+		function Test-IsDefaultScript {
+			param([string]$FilePath)
+
+			if ([string]::IsNullOrWhiteSpace($FilePath)) { return $false }
+
+			$fileName = [System.IO.Path]::GetFileName($FilePath)
+			return $fileName -in @('Installer.ps1', 'WinGetManifest.ps1', 'InstallWSB.ps1')
+		}
+
 		# Function to load a default script (from disk if exists, otherwise hardcoded default)
 		function Get-DefaultScriptContent {
 			param(
@@ -455,82 +515,17 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 			$scriptPath = Join-Path $WsbDir "$ScriptName.ps1"
 
-			# Try to load from disk first
+			# Try to load from disk
 			if (Test-Path $scriptPath) {
 				try {
 					return Get-Content -Path $scriptPath -Raw
 				}
 				catch {
-					Write-Warning "Failed to load $scriptPath from disk : $($_.Exception.Message). Using hardcoded default."
+					# Silently fail - return null
 				}
 			}
 
-			# Fallback to hardcoded defaults
-			$hardcodedDefaults = @{
-				"InstallWSB" = @'
-$SandboxFolderName = "DefaultFolder"
-Start-Process cmd.exe -ArgumentList "/c del /Q `"$env:USERPROFILE\Desktop\$SandboxFolderName\*.log`" & `"$env:USERPROFILE\Desktop\$SandboxFolderName\InstallWSB.cmd`" && explorer `"$env:USERPROFILE\Desktop\$SandboxFolderName`""
-'@
-				"WinGetManifest" = @'
-$SandboxFolderName = "DefaultFolder"
-Start-Process powershell.exe -ArgumentList "-NoExit", "-Command", "Set-Location C:\; winget validate '$env:USERPROFILE\Desktop\$SandboxFolderName'; Read-Host 'Press Enter to install local manifest'; winget install --manifest '$env:USERPROFILE\Desktop\$SandboxFolderName' --accept-source-agreements --accept-package-agreements; Read-Host 'Press Enter to exit'; exit"
-'@
-				"Installer" = @'
-$SandboxFolderName = "DefaultFolder"
-$sandboxPath = "$env:USERPROFILE\Desktop\$SandboxFolderName"
-
-# Look for installer files (priority order)
-# Note: Get-ChildItem -Filter is case-insensitive on Windows
-# "Setup.exe" will match Setup.exe, setup.exe, SETUP.EXE, etc.
-$installers = @(
-"Install.cmd",
-"Install.bat",
-"Setup.cmd",
-"Setup.bat",
-"Setup.exe",
-"Install.exe",
-"Installer.exe",
-"Setup.msi",
-"Install.msi",
-"Installer.msi"
-)
-$found = $null
-foreach ($file in $installers) {
-$matches = Get-ChildItem -Path $sandboxPath -Filter $file -File -ErrorAction SilentlyContinue
-if ($matches) {
-	$found = $matches[0].Name
-	break
-}
-}
-
-if ($found) {
-if ($found -like "*.cmd" -or $found -like "*.bat") {
-	Start-Process cmd.exe -ArgumentList "/c cd /d `"$sandboxPath`" && `"$found`""
-} elseif ($found -like "*.msi") {
-	Start-Process msiexec.exe -ArgumentList "/i `"$sandboxPath\$found`""
-} else {
-	Start-Process "$sandboxPath\$found" -WorkingDirectory $sandboxPath
-}
-} else {
-Start-Process explorer.exe -ArgumentList "`"$sandboxPath`""
-}
-'@
-			}
-
-			if ($hardcodedDefaults.ContainsKey($ScriptName)) {
-				# Create the file if it doesn't exist
-				if (-not (Test-Path $scriptPath)) {
-					try {
-						$hardcodedDefaults[$ScriptName] | Out-File -FilePath $scriptPath -Encoding ASCII
-						Write-Verbose "Created default script file: $scriptPath"
-					}
-					catch {
-						Write-Warning "Failed to create $scriptPath : $($_.Exception.Message)"
-					}
-				}
-				return $hardcodedDefaults[$ScriptName]
-			}
-
+			# Return null if file doesn't exist
 			return $null
 		}
 
@@ -540,8 +535,12 @@ Start-Process explorer.exe -ArgumentList "`"$sandboxPath`""
 			New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 		}
 
-		# Note: Individual script files are now created on-demand by Get-DefaultScriptContent
-		# when they're first accessed, not all at once during initialization
+		# Download/update default scripts from GitHub
+		Write-Host "Checking default scripts... " -NoNewline -ForegroundColor Cyan
+		$initialStatus = "Checking default scripts from GitHub"
+		Update-ScriptsFromGitHub -GitHubRepo 'KnifMelti/SandboxStart' -GitHubFolder 'Source/assets/scripts' -LocalFolder $wsbDir
+		Write-Host "Done" -ForegroundColor Green
+		$initialStatus = "Default scripts ready"
 
 		# Create script-mappings.txt if it doesn't exist (do this early)
 		$mappingFile = Join-Path $wsbDir "script-mappings.txt"
@@ -677,7 +676,12 @@ InstallWSB.cmd = InstallWSB.ps1
 				# Fallback to Installer if script not found
 				if ([string]::IsNullOrWhiteSpace($scriptContent)) {
 					$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
-					$lblStatus.Text = "Status: Mapping fallback to Installer.ps1"
+					$scriptName = "Installer"
+					if ([string]::IsNullOrWhiteSpace($scriptContent)) {
+						$lblStatus.Text = "Status: Scripts not available"
+					} else {
+						$lblStatus.Text = "Status: Mapping fallback to Installer.ps1"
+					}
 				} else {
 					$lblStatus.Text = "Status: Mapping -> $matchingScript"
 				}
@@ -689,6 +693,18 @@ InstallWSB.cmd = InstallWSB.ps1
 
 					# Update current script file tracking
 					$script:currentScriptFile = Join-Path $wsbDir "$scriptName.ps1"
+
+					# Update Save button state
+					if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
+						$btnSaveScript.Enabled = $false
+					} else {
+						$btnSaveScript.Enabled = $true
+					}
+				} else {
+					$txtScript.Text = ""
+					$script:currentScriptFile = $null
+					$btnSaveScript.Enabled = $false
+					$lblStatus.Text = "Status: Script not available"
 				}
 			}
 		})
@@ -1056,7 +1072,7 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
 		# 3. WMI via Get-WmiObject (older systems)
 		# 4. Hard-coded fallback (8 GB)
-		Write-Host "Detecting system memory..." -NoNewline
+		Write-Host "Detecting system memory... " -NoNewline -ForegroundColor Cyan
 		try {
 			$totalMemoryMB = $null
 
@@ -1193,7 +1209,23 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		$lblScript = New-Object System.Windows.Forms.Label
 		$lblScript.Location = New-Object System.Drawing.Point($leftMargin, $y)
 		$lblScript.Size = New-Object System.Drawing.Size(50, $labelHeight)
-		$lblScript.Text = "Script:"
+		$lblScript.Text = "[Script:]"
+		$lblScript.Font = New-Object System.Drawing.Font($lblScript.Font.FontFamily, $lblScript.Font.Size, [System.Drawing.FontStyle]::Underline)
+		$lblScript.ForeColor = [System.Drawing.Color]::Blue
+		$lblScript.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+		# Tooltip
+		$tooltipScriptLabel = New-Object System.Windows.Forms.ToolTip
+		$tooltipScriptLabel.SetToolTip($lblScript, "Click to clear script editor")
+
+		# Click event
+		$lblScript.Add_Click({
+			$txtScript.Text = ""
+			$script:currentScriptFile = $null
+			$btnSaveScript.Enabled = $false  # Inaktivera Save när editorn är tom
+			$lblStatus.Text = "Status: Script editor cleared"
+		})
+
 		$form.Controls.Add($lblScript)
 
 		# Create the script textbox first (before buttons) so buttons appear on top
@@ -1213,22 +1245,28 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 
 			# Determine which script to load based on folder contents
 			$selectedScriptName = $null
+			$autoDetectedStatus = ""
 			if (Test-Path $installWSBPath) {
 				$selectedScriptName = "InstallWSB"
 				$script:currentScriptFile = Join-Path $wsbDir "InstallWSB.ps1"
-				$initialStatus = "Auto default: InstallWSB.ps1 (InstallWSB.cmd found)"
+				$autoDetectedStatus = "Auto-loaded: InstallWSB.ps1 (InstallWSB.cmd found)"
 			} elseif ($installerYamlFiles) {
 				$selectedScriptName = "WinGetManifest"
 				$script:currentScriptFile = Join-Path $wsbDir "WinGetManifest.ps1"
-				$initialStatus = "Auto default: WinGetManifest.ps1 (*.installer.yaml found)"
+				$autoDetectedStatus = "Auto-loaded: WinGetManifest.ps1 (*.installer.yaml found)"
 			} elseif ($matchingScriptInit -eq 'Installer.ps1') {
 				$selectedScriptName = "Installer"
 				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
-				$initialStatus = "Auto default: Installer.ps1 (mapping matched)"
+				$autoDetectedStatus = "Auto-loaded: Installer.ps1"
 			} else {
 				$selectedScriptName = "Installer"
 				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
-				$initialStatus = "Auto default: Installer.ps1"
+				$autoDetectedStatus = "Auto-loaded: Installer.ps1 (default)"
+			}
+
+			# Only override initialStatus if it's still the "scripts ready" message
+			if ($initialStatus -eq "Default scripts ready") {
+				$initialStatus = $autoDetectedStatus
 			}
 
 			# Load the selected script using dynamic loading
@@ -1236,19 +1274,25 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			if ($scriptContent) {
 				$txtScript.Text = ($scriptContent -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`"")
 			} else {
-				$txtScript.Text = "# Error: Could not load script content"
+				$txtScript.Text = ""
+				# Override status to show script is missing
+				$initialStatus = "Warning: $selectedScriptName.ps1 not available"
 			}
 		}
 		catch {
 			# Fallback to Installer script if anything goes wrong
 			$selectedScriptName = "Installer"
 			$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
-			$initialStatus = "Auto default: Installer.ps1 (error during detection)"
+			if ($initialStatus -eq "Default scripts ready") {
+				$initialStatus = "Auto-loaded: Installer.ps1 (default - error during detection)"
+			}
 			$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
 			if ($scriptContent) {
 				$txtScript.Text = $scriptContent
 			} else {
-				$txtScript.Text = "# Error loading script: $($_.Exception.Message)"
+				$txtScript.Text = ""
+				# Override status to show script is missing
+				$initialStatus = "Warning: Installer.ps1 not available"
 			}
 		}
 		$form.Controls.Add($txtScript)
@@ -1285,6 +1329,13 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 					$currentFolderName = $txtSandboxFolderName.Text
 					if (![string]::IsNullOrWhiteSpace($currentFolderName)) {
 						$txtScript.Text = $txtScript.Text -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$currentFolderName`""
+					}
+
+					# Update Save button state for loaded file
+					if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
+						$btnSaveScript.Enabled = $false
+					} else {
+						$btnSaveScript.Enabled = $true
 					}
 				}
 				catch {
@@ -1350,6 +1401,30 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		})
 		$form.Controls.Add($btnSaveScript)
 
+		# Set initial Save button state based on current script
+		if ($script:currentScriptFile -and (Test-IsDefaultScript -FilePath $script:currentScriptFile)) {
+			$btnSaveScript.Enabled = $false
+		} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
+			$btnSaveScript.Enabled = $false
+		}
+
+		# Add TextChanged event to update Save button state dynamically
+		$txtScript.Add_TextChanged({
+			if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
+				# Default scripts cannot be saved
+				$btnSaveScript.Enabled = $false
+			} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
+				# Empty script cannot be saved
+				$btnSaveScript.Enabled = $false
+			} elseif ([string]::IsNullOrWhiteSpace($script:currentScriptFile)) {
+				# No file path - must use Save As
+				$btnSaveScript.Enabled = $false
+			} else {
+				# Valid non-default script with content
+				$btnSaveScript.Enabled = $true
+			}
+		})
+
 		# Script Mapping Editor button (small, above Save As button)
 		$btnEditMappings = New-Object System.Windows.Forms.Button
 		$btnEditMappings.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 38), ($y - 25))
@@ -1380,8 +1455,8 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			$saveFileDialog.DefaultExt = "ps1"
 			$saveFileDialog.Title = "Save Script As"
 
-			# Pre-populate filename if we have a current file
-			if ($script:currentScriptFile) {
+			# Pre-populate filename only if it's NOT a default script
+			if ($script:currentScriptFile -and -not (Test-IsDefaultScript -FilePath $script:currentScriptFile)) {
 				$saveFileDialog.FileName = [System.IO.Path]::GetFileName($script:currentScriptFile)
 			}
 
