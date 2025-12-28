@@ -786,7 +786,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			# Generate script for selected file directly using Std-File.ps1
 			$txtScript.Text = @"
 `$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-& "`$env:USERPROFILE\Desktop\`$SandboxFolderName\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$selectedFile"
+& "`$env:USERPROFILE\Desktop\SandboxTest\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$selectedFile"
 "@
 
 			$lblStatus.Text = "Status: File selected -> $selectedFile (using Std-File.ps1)"
