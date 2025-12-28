@@ -2,23 +2,23 @@ function Get-ScriptMappings {
 	<#
 	.SYNOPSIS
 	Reads script mapping configuration from external file
-	
+
 	.DESCRIPTION
 	Loads script-to-pattern mappings from wsb\script-mappings.txt.
 	Format: Pattern = ScriptName.ps1
-	Example: InstallWSB.cmd = InstallWSB.ps1
+	Example: InstallWSB.cmd = Std-WAU.ps1
 	#>
-	
+
 	$mappingFile = Join-Path $Script:WorkingDir "wsb\script-mappings.txt"
 	$mappings = @()
-	
+
 	# Create default mapping file if it doesn't exist
 	if (-not (Test-Path $mappingFile)) {
 		$wsbDir = Split-Path $mappingFile -Parent
 		if (-not (Test-Path $wsbDir)) {
 			New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 		}
-		
+
 		$defaultContent = @"
 # Script Mapping Configuration for Windows Sandbox Testing
 # Format: FilePattern = ScriptToExecute.ps1
@@ -27,30 +27,72 @@ function Get-ScriptMappings {
 # Wildcards: * (any characters), ? (single character)
 # The *.* pattern at the end acts as fallback.
 
-InstallWSB.cmd = InstallWSB.ps1
-*.installer.yaml = WinGetManifest.ps1
-*.* = Installer.ps1
+InstallWSB.cmd = Std-WAU.ps1
+*.installer.yaml = Std-Manifest.ps1
+*.* = Std-Install.ps1
 "@
 		Set-Content -Path $mappingFile -Value $defaultContent -Encoding ASCII
 	}
-	
+
 	# Read and parse mapping file
 	try {
 		$lines = Get-Content -Path $mappingFile -ErrorAction Stop
-		
+
+		# Migrate old script names to new ones
+		$migrated = $false
+		$updatedLines = @()
+
+		foreach ($lineRaw in $lines) {
+			$updatedLine = $lineRaw
+
+			# Replace old script names with new ones
+			if ($lineRaw -match '=\s*InstallWSB\.ps1\s*$') {
+				$updatedLine = $lineRaw -replace 'InstallWSB\.ps1', 'Std-WAU.ps1'
+				$migrated = $true
+			}
+			elseif ($lineRaw -match '=\s*WinGetManifest\.ps1\s*$') {
+				$updatedLine = $lineRaw -replace 'WinGetManifest\.ps1', 'Std-Manifest.ps1'
+				$migrated = $true
+			}
+			elseif ($lineRaw -match '=\s*Installer\.ps1\s*$') {
+				$updatedLine = $lineRaw -replace 'Installer\.ps1', 'Std-Install.ps1'
+				$migrated = $true
+			}
+
+			$updatedLines += $updatedLine
+		}
+
+		# Save migrated mappings back to file
+		if ($migrated) {
+			Set-Content -Path $mappingFile -Value ($updatedLines -join "`r`n") -Encoding ASCII
+
+			# Delete old script files from wsb directory
+			$wsbDir = Split-Path $mappingFile -Parent
+			$oldScripts = @('InstallWSB.ps1', 'WinGetManifest.ps1', 'Installer.ps1')
+			foreach ($oldScript in $oldScripts) {
+				$oldPath = Join-Path $wsbDir $oldScript
+				if (Test-Path $oldPath) {
+					Remove-Item -Path $oldPath -Force -ErrorAction SilentlyContinue
+				}
+			}
+
+			# Re-read the migrated lines
+			$lines = $updatedLines
+		}
+
 		foreach ($line in $lines) {
 			$line = $line.Trim()
-			
+
 			# Skip comments and empty lines
 			if ($line.StartsWith('#') -or [string]::IsNullOrWhiteSpace($line)) {
 				continue
 			}
-			
+
 			# Parse: Pattern = Script.ps1
 			if ($line -match '^\s*(.+?)\s*=\s*(.+?)\s*$') {
 				$pattern = $matches[1].Trim()
 				$script = $matches[2].Trim()
-				
+
 				# Validate script name ends with .ps1
 				if ($script -like "*.ps1") {
 					$mappings += @{
@@ -64,15 +106,15 @@ InstallWSB.cmd = InstallWSB.ps1
 	catch {
 		Write-Warning "Failed to read script mappings: $($_.Exception.Message)"
 	}
-	
+
 	# Ensure fallback exists
 	if (-not ($mappings | Where-Object { $_.Pattern -eq "*.*" })) {
 		$mappings += @{
 			Pattern = "*.*"
-			Script = "Installer.ps1"
+			Script = "Std-Install.ps1"
 		}
 	}
-	
+
 	return $mappings
 }
 
@@ -380,7 +422,7 @@ function Find-MatchingScript {
 	if ($fallback) {
 		return $fallback.Script
 	} else {
-		return "Installer.ps1"
+		return "Std-Install.ps1"
 	}
 }
 
@@ -518,7 +560,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			if ([string]::IsNullOrWhiteSpace($FilePath)) { return $false }
 
 			$fileName = [System.IO.Path]::GetFileName($FilePath)
-			return $fileName -in @('Installer.ps1', 'WinGetManifest.ps1', 'InstallWSB.ps1')
+			return $fileName -in @('Std-Install.ps1', 'Std-Manifest.ps1', 'Std-WAU.ps1', 'Std-File.ps1')
 		}
 
 		# Function to load a default script (from disk if exists, otherwise hardcoded default)
@@ -544,11 +586,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			return $null
 		}
 
-		# Ensure wsb directory exists
+
+		# Initialize wsb directory and script mappings early
+		# This also handles migration from old script names to new ones
 		$wsbDir = Join-Path $Script:WorkingDir "wsb"
-		if (-not (Test-Path $wsbDir)) {
-			New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
-		}
+		Get-ScriptMappings | Out-Null  # Creates directory, mappings file, and migrates old names
 
 		# Download/update default scripts from GitHub
 		Write-Host "Checking default scripts... " -NoNewline -ForegroundColor Cyan
@@ -556,24 +598,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		Update-ScriptsFromGitHub -GitHubRepo 'KnifMelti/SandboxStart' -GitHubFolder 'Source/assets/scripts' -LocalFolder $wsbDir
 		Write-Host "Done" -ForegroundColor Green
 		$initialStatus = "Default scripts ready"
-
-		# Create script-mappings.txt if it doesn't exist (do this early)
-		$mappingFile = Join-Path $wsbDir "script-mappings.txt"
-		if (-not (Test-Path $mappingFile)) {
-			$defaultMappingContent = @"
-# Script Mapping Configuration for Windows Sandbox Testing
-# Format: FilePattern = ScriptToExecute.ps1
-#
-# Patterns are evaluated in order. First match wins.
-# Wildcards: * (any characters), ? (single character)
-# The *.* pattern at the end acts as fallback.
-
-InstallWSB.cmd = InstallWSB.ps1
-*.installer.yaml = WinGetManifest.ps1
-*.* = Installer.ps1
-"@
-			Set-Content -Path $mappingFile -Value $defaultMappingContent -Encoding ASCII
-		}
 
 		# Load embedded icon
 		try {
@@ -690,12 +714,12 @@ InstallWSB.cmd = InstallWSB.ps1
 
 				# Fallback to Installer if script not found
 				if ([string]::IsNullOrWhiteSpace($scriptContent)) {
-					$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
-					$scriptName = "Installer"
+					$scriptContent = Get-DefaultScriptContent -ScriptName "Std-Install" -WsbDir $wsbDir
+					$scriptName = "Std-Install"
 					if ([string]::IsNullOrWhiteSpace($scriptContent)) {
 						$lblStatus.Text = "Status: Scripts not available"
 					} else {
-						$lblStatus.Text = "Status: Mapping fallback to Installer.ps1"
+						$lblStatus.Text = "Status: Mapping fallback to Std-Install.ps1"
 					}
 				} else {
 					$lblStatus.Text = "Status: Mapping -> $matchingScript"
@@ -759,40 +783,13 @@ InstallWSB.cmd = InstallWSB.ps1
 					}
 				}
 				
-				# Generate script for selected file directly (no folder content detection)
-				$extension = [System.IO.Path]::GetExtension($selectedFile).ToLower()
-				
-				# Build appropriate command based on file type
-				if ($extension -eq '.exe') {
-					# EXE: Direct execution from sandbox folder
-					$txtScript.Text = @"
+			# Generate script for selected file directly using Std-File.ps1
+			$txtScript.Text = @"
 `$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -WorkingDirectory "`$env:USERPROFILE\Desktop\`$SandboxFolderName"
+& "`$env:USERPROFILE\Desktop\`$SandboxFolderName\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$selectedFile"
 "@
-				}
-				elseif ($extension -in @('.cmd', '.bat')) {
-					# CMD/BAT: Execute via cmd.exe /c with proper working directory
-					$txtScript.Text = @"
-`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-Start-Process cmd.exe -ArgumentList "/c cd /d ```"`$env:USERPROFILE\Desktop\`$SandboxFolderName```" && ```"$selectedFile```""
-"@
-				}
-				elseif ($extension -eq '.ps1') {
-					# PS1: Execute via powershell.exe with full path
-					$txtScript.Text = @"
-`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-Start-Process powershell.exe -ArgumentList "-File ```"`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile```""
-"@
-				}
-				else {
-					# Default: Try to run directly using Start-Process with file association
-					$txtScript.Text = @"
-`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -WorkingDirectory "`$env:USERPROFILE\Desktop\`$SandboxFolderName"
-"@
-				}
 
-				$lblStatus.Text = "Status: File selected -> $selectedFile ($extension)"
+			$lblStatus.Text = "Status: File selected -> $selectedFile (using Std-File.ps1)"
 			}
 		})
 		$form.Controls.Add($btnBrowseFile)
@@ -1283,27 +1280,27 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 			$selectedScriptName = $null
 			$autoDetectedStatus = ""
 			if (Test-Path $installWSBPath) {
-				$selectedScriptName = "InstallWSB"
-				$script:currentScriptFile = Join-Path $wsbDir "InstallWSB.ps1"
-				$autoDetectedStatus = "Auto-loaded: InstallWSB.ps1 (InstallWSB.cmd found)"
+				$selectedScriptName = "Std-WAU"
+				$script:currentScriptFile = Join-Path $wsbDir "Std-WAU.ps1"
+				$autoDetectedStatus = "Auto-loaded: Std-WAU.ps1 (InstallWSB.cmd found)"
 			} elseif ($installerYamlFiles) {
-				$selectedScriptName = "WinGetManifest"
-				$script:currentScriptFile = Join-Path $wsbDir "WinGetManifest.ps1"
-				$autoDetectedStatus = "Auto-loaded: WinGetManifest.ps1 (*.installer.yaml found)"
+				$selectedScriptName = "Std-Manifest"
+				$script:currentScriptFile = Join-Path $wsbDir "Std-Manifest.ps1"
+				$autoDetectedStatus = "Auto-loaded: Std-Manifest.ps1 (*.installer.yaml found)"
 			} elseif ($matchingScriptInit) {
 				# Use whatever script the mapping system returned
 				$selectedScriptName = $matchingScriptInit.Replace('.ps1', '')
 				$script:currentScriptFile = Join-Path $wsbDir $matchingScriptInit
-				if ($matchingScriptInit -eq 'Installer.ps1') {
-					$autoDetectedStatus = "Auto-loaded: Installer.ps1 (default)"
+				if ($matchingScriptInit -eq 'Std-Install.ps1') {
+					$autoDetectedStatus = "Auto-loaded: Std-Install.ps1 (default)"
 				} else {
 					$autoDetectedStatus = "Auto-loaded: $matchingScriptInit (from mapping)"
 				}
 			} else {
 				# True fallback - only if Find-MatchingScript returns nothing
-				$selectedScriptName = "Installer"
-				$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
-				$autoDetectedStatus = "Auto-loaded: Installer.ps1 (default)"
+				$selectedScriptName = "Std-Install"
+				$script:currentScriptFile = Join-Path $wsbDir "Std-Install.ps1"
+				$autoDetectedStatus = "Auto-loaded: Std-Install.ps1 (default)"
 			}
 
 			# Only override initialStatus if it's still the "scripts ready" message
@@ -1323,18 +1320,18 @@ Start-Process "`$env:USERPROFILE\Desktop\`$SandboxFolderName\$selectedFile" -Wor
 		}
 		catch {
 			# Fallback to Installer script if anything goes wrong
-			$selectedScriptName = "Installer"
-			$script:currentScriptFile = Join-Path $wsbDir "Installer.ps1"
+			$selectedScriptName = "Std-Install"
+			$script:currentScriptFile = Join-Path $wsbDir "Std-Install.ps1"
 			if ($initialStatus -eq "Default scripts ready") {
-				$initialStatus = "Auto-loaded: Installer.ps1 (default - error during detection)"
+				$initialStatus = "Auto-loaded: Std-Install.ps1 (default - error during detection)"
 			}
-			$scriptContent = Get-DefaultScriptContent -ScriptName "Installer" -WsbDir $wsbDir
+			$scriptContent = Get-DefaultScriptContent -ScriptName "Std-Install" -WsbDir $wsbDir
 			if ($scriptContent) {
 				$txtScript.Text = $scriptContent
 			} else {
 				$txtScript.Text = ""
 				# Override status to show script is missing
-				$initialStatus = "Warning: Installer.ps1 not available"
+				$initialStatus = "Warning: Std-Install.ps1 not available"
 			}
 		}
 		$form.Controls.Add($txtScript)
