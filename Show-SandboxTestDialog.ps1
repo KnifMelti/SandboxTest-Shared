@@ -757,7 +757,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
-			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.cmd;*.bat;*.js;*.ps1)|*.exe;*.msi;*.cmd;*.bat;*.js;*.ps1|All Files (*.*)|*.*"
+			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.cmd;*.bat;*.ps1;*.ahk;*.py;*.js)|*.exe;*.msi;*.cmd;*.bat;*.ps1;*.ahk;*.py;*.js|All Files (*.*)|*.*"
 			$fileDialog.InitialDirectory = $txtMapFolder.Text
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
@@ -790,6 +790,46 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 "@
 
 			$lblStatus.Text = "Status: File selected -> $selectedFile (using Std-File.ps1)"
+
+			# Auto-select Python package if .py file detected
+			if ($selectedFile -like "*.py") {
+				if ($chkNetworking.Checked) {
+					# Check if Python package list exists
+					$pythonPackageName = "Python"
+
+					if ($cmbInstallPackages.Items -contains $pythonPackageName) {
+						# Python package list exists - auto-select it
+						$cmbInstallPackages.SelectedItem = $pythonPackageName
+						$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
+					} else {
+						# Python package list doesn't exist - show warning
+						$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
+					}
+				} else {
+					# Networking disabled - show warning
+					$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
+				}
+			}
+
+			# Auto-select AutoHotkey package if .ahk file detected
+			if ($selectedFile -like "*.ahk") {
+				if ($chkNetworking.Checked) {
+					# Check if AutoHotkey package list exists
+					$ahkPackageName = "AHK"
+
+					if ($cmbInstallPackages.Items -contains $ahkPackageName) {
+						# AHK package list exists - auto-select it
+						$cmbInstallPackages.SelectedItem = $ahkPackageName
+						$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
+					} else {
+						# AHK package list doesn't exist - show warning
+						$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
+					}
+				} else {
+					# Networking disabled - show warning
+					$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
+				}
+			}
 			}
 		})
 		$form.Controls.Add($btnBrowseFile)
