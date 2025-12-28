@@ -972,6 +972,13 @@ Write-Host "================================================" -ForegroundColor C
 Write-Host "Script execution completed!" -ForegroundColor Green
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host ""
+
+# Clean up Std-File.ps1 if it exists
+`$stdFilePath = Join-Path $($script:SandboxTestDataFolder) "Std-File.ps1"
+if (Test-Path `$stdFilePath) {
+    Remove-Item -Path `$stdFilePath -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 "@ | Out-File -FilePath $(Join-Path -Path $script:TestDataFolder -ChildPath "$script:ScriptName.ps1") -Encoding ASCII -Force
