@@ -781,6 +781,13 @@ if ($installLocation) {
             $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding ASCII
         }
 
+        # Copy Std-File.ps1 to sandbox (needed when File... button is used)
+        $stdFilePath = Join-Path (Join-Path $WorkingDir "wsb") "Std-File.ps1"
+        if (Test-Path $stdFilePath) {
+            Write-Verbose "Copying Std-File.ps1 to sandbox"
+            Copy-Item -Path $stdFilePath -Destination (Join-Path $script:TestDataFolder "Std-File.ps1") -ErrorAction SilentlyContinue
+        }
+
         Write-Verbose 'Creating the script for bootstrapping the sandbox'
         @"
 function Update-EnvironmentVariables {
