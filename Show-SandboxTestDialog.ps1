@@ -515,7 +515,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 				# Get folder contents from GitHub API
 				$apiUrl = "https://api.github.com/repos/$GitHubRepo/contents/$GitHubFolder`?ref=$Branch"
-				$files = Invoke-RestMethod -Uri $apiUrl -Headers @{'User-Agent'='PowerShell'}
+				$files = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 5 -Headers @{'User-Agent'='PowerShell'} -UseBasicParsing
 
 				# Filter for .ps1 files
 				$ps1Files = $files | Where-Object { $_.name -like '*.ps1' -and $_.type -eq 'file' }
@@ -603,7 +603,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		Write-Host "Checking for updates... " -NoNewline -ForegroundColor Cyan
 		try {
 			$apiUrl = 'https://api.github.com/repos/KnifMelti/SandboxStart/releases/latest'
-			$latestRelease = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 10 -Headers @{'User-Agent'='PowerShell'} -ErrorAction Stop
+			$latestRelease = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 5 -Headers @{'User-Agent'='PowerShell'} -UseBasicParsing -ErrorAction Stop
 
 			# Get local SandboxStart.ps1 file timestamp
 			$localScriptPath = Join-Path $Script:WorkingDir "SandboxStart.ps1"
