@@ -596,14 +596,14 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		Get-ScriptMappings | Out-Null  # Creates directory, mappings file, and migrates old names
 
 		# Download/update default scripts from GitHub
-		Write-Host "Checking default scripts... " -NoNewline -ForegroundColor Cyan
+		Write-Host "Checking default scripts...`t" -NoNewline -ForegroundColor Cyan
 		$initialStatus = "Checking default scripts from GitHub"
 		Update-ScriptsFromGitHub -GitHubRepo 'KnifMelti/SandboxStart' -GitHubFolder 'Source/assets/scripts' -LocalFolder $wsbDir
 		Write-Host "Done" -ForegroundColor Green
 		$initialStatus = "Default scripts ready"
 
 		# Check for SandboxStart updates
-		Write-Host "Checking for updates... " -NoNewline -ForegroundColor Cyan
+		Write-Host "Checking for updates...`t`t" -NoNewline -ForegroundColor Cyan
 		try {
 			# Use GitHub API helper with caching
 			$latestRelease = Get-GitHubLatestRelease `
@@ -632,7 +632,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 						$localFileOlderThanRelease = $true
 						Write-Host "Update available" -ForegroundColor Yellow
 					} else {
-						Write-Host "Up to date" -ForegroundColor Green
+						Write-Host "Done" -ForegroundColor Green
 					}
 				} else {
 					# No ZIP asset found
@@ -1195,7 +1195,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
 		# 3. WMI via Get-WmiObject (older systems)
 		# 4. Hard-coded fallback (8 GB)
-		Write-Host "Detecting system memory... " -NoNewline -ForegroundColor Cyan
+		Write-Host "Detecting system memory...`t" -NoNewline -ForegroundColor Cyan
 		try {
 			$totalMemoryMB = $null
 
@@ -1207,7 +1207,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				$computerInfo = Get-ComputerInfo -Property CsTotalPhysicalMemory -ErrorAction Stop
 				$ProgressPreference = $prevProgressPreference
 				$totalMemoryMB = [int]($computerInfo.CsTotalPhysicalMemory / 1MB)
-				Write-Host " Done" -ForegroundColor Green
+				Write-Host "Done" -ForegroundColor Green
 				Write-Verbose "Memory detected via ComputerInfo: $totalMemoryMB MB"
 			}
 			catch {
@@ -1216,14 +1216,14 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				# Method 2: Try CIM (works without elevation on most systems)
 				try {
 					$totalMemoryMB = [int]((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
-					Write-Host " Done" -ForegroundColor Green
+					Write-Host "Done" -ForegroundColor Green
 					Write-Verbose "Memory detected via CIM: $totalMemoryMB MB"
 				}
 				catch {
 					# Method 3: Try WMI as last resort
 					try {
 						$totalMemoryMB = [int]((Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
-						Write-Host " Done" -ForegroundColor Green
+						Write-Host "Done" -ForegroundColor Green
 						Write-Verbose "Memory detected via WMI: $totalMemoryMB MB"
 					}
 					catch {
