@@ -1257,12 +1257,12 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Now create the UI controls with the detected memory values
 		$lblMemory = New-Object System.Windows.Forms.Label
 		$lblMemory.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$lblMemory.Size = New-Object System.Drawing.Size(150, $labelHeight)
+		$lblMemory.Size = New-Object System.Drawing.Size(120, $labelHeight)
 		$lblMemory.Text = "Memory (MB):"
 		$form.Controls.Add($lblMemory)
 
 		$cmbMemory = New-Object System.Windows.Forms.ComboBox
-		$cmbMemory.Location = New-Object System.Drawing.Point(($leftMargin + 160), $y)
+		$cmbMemory.Location = New-Object System.Drawing.Point(($leftMargin + 139), $y)
 		$cmbMemory.Size = New-Object System.Drawing.Size(120, $controlHeight)
 		$cmbMemory.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
@@ -1301,12 +1301,12 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# vGPU dropdown
 		$lblvGPU = New-Object System.Windows.Forms.Label
 		$lblvGPU.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$lblvGPU.Size = New-Object System.Drawing.Size(150, $labelHeight)
+		$lblvGPU.Size = New-Object System.Drawing.Size(120, $labelHeight)
 		$lblvGPU.Text = "GPU Virtualization:"
 		$form.Controls.Add($lblvGPU)
 
 		$cmbvGPU = New-Object System.Windows.Forms.ComboBox
-		$cmbvGPU.Location = New-Object System.Drawing.Point(($leftMargin + 160), $y)
+		$cmbvGPU.Location = New-Object System.Drawing.Point(($leftMargin + 139), $y)
 		$cmbvGPU.Size = New-Object System.Drawing.Size(120, $controlHeight)
 		$cmbvGPU.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 		[void]$cmbvGPU.Items.Add("Default")
