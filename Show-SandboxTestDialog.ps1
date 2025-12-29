@@ -599,6 +599,48 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		Write-Host "Done" -ForegroundColor Green
 		$initialStatus = "Default scripts ready"
 
+		# Check for SandboxStart updates
+		Write-Host "Checking for updates... " -NoNewline -ForegroundColor Cyan
+		try {
+			$apiUrl = 'https://api.github.com/repos/KnifMelti/SandboxStart/releases/latest'
+			$latestRelease = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 10 -Headers @{'User-Agent'='PowerShell'} -ErrorAction Stop
+
+			# Get local SandboxStart.ps1 file timestamp
+			$localScriptPath = Join-Path $Script:WorkingDir "SandboxStart.ps1"
+
+			# Only check if the file exists
+			if (Test-Path $localScriptPath) {
+				# Get local file time in UTC for accurate comparison
+				$localFileTime = (Get-Item $localScriptPath).LastWriteTimeUtc
+
+				# Find the ZIP asset and use its created_at timestamp
+				$zipAsset = $latestRelease.assets | Where-Object { $_.name -like "SandboxStart-*.zip" } | Select-Object -First 1
+				if ($zipAsset) {
+					# Parse ZIP asset created_at timestamp and convert to UTC (API returns UTC but Parse converts to local)
+					$releaseDate = ([DateTime]::Parse($zipAsset.created_at)).ToUniversalTime()
+
+					# Compare dates with 90 minute tolerance (build/upload time difference and timezone conversion)
+					# If release is more than 90 minutes newer than local file, show update button
+					$timeDifference = ($releaseDate - $localFileTime).TotalMinutes
+					if ($timeDifference -gt 90) {
+						$localFileOlderThanRelease = $true
+						Write-Host "Update available" -ForegroundColor Yellow
+					} else {
+						Write-Host "Up to date" -ForegroundColor Green
+					}
+				} else {
+					# No ZIP asset found
+					Write-Host "Skipped" -ForegroundColor Gray
+				}
+			} else {
+				# SandboxStart.ps1 doesn't exist (e.g., when running from shared submodule in other projects)
+				Write-Host "Skipped" -ForegroundColor Gray
+			}
+		} catch {
+			# Silent fail - don't show button if GitHub API is unreachable
+			Write-Host "Skipped" -ForegroundColor Gray
+		}
+
 		# Load embedded icon
 		try {
 			$iconBytes = [System.Convert]::FromBase64String($iconBase64)
@@ -637,6 +679,29 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$spacing = 5
 		$leftMargin = 20
 		$controlWidth = 400
+
+		# Update button in top-right corner
+		$btnUpdate = New-Object System.Windows.Forms.Button
+		$btnUpdate.Location = New-Object System.Drawing.Point($controlWidth, 15)
+		$btnUpdate.Size = New-Object System.Drawing.Size(20, 20)
+		$btnUpdate.Text = [char]0x2B06
+		$btnUpdate.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 14, [System.Drawing.FontStyle]::Regular)
+		$btnUpdate.BackColor = [System.Drawing.Color]::LightGreen
+		$btnUpdate.Visible = $false  # Initially hidden
+
+		$toolTip = New-Object System.Windows.Forms.ToolTip
+		$toolTip.SetToolTip($btnUpdate, "New version available - Click to download")
+
+		$btnUpdate.Add_Click({
+			Start-Process "https://github.com/KnifMelti/SandboxStart/releases/latest"
+		})
+
+		# Enable update button if newer version available
+		if ($localFileOlderThanRelease) {
+			$btnUpdate.Visible = $true
+		}
+
+		$form.Controls.Add($btnUpdate)
 
 		# Mapped Folder selection
 		$lblMapFolder = New-Object System.Windows.Forms.Label
@@ -1260,10 +1325,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Script section
 		# Clear script button (X)
 		$btnClearScript = New-Object System.Windows.Forms.Button
-		$btnClearScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 18), ($y + 5))
-		$btnClearScript.Size = New-Object System.Drawing.Size(18, 18)
+		$btnClearScript.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth - 20), ($y + 3))
+		$btnClearScript.Size = New-Object System.Drawing.Size(20, 20)
 		$btnClearScript.Text = [char]0x2716
-		$btnClearScript.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 9, [System.Drawing.FontStyle]::Regular)
+		$btnClearScript.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 14, [System.Drawing.FontStyle]::Regular)
 
 		# Tooltip
 		$tooltipClearScript = New-Object System.Windows.Forms.ToolTip
@@ -1281,10 +1346,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 		# Edit mappings button (pen icon)
 		$btnEditMappings = New-Object System.Windows.Forms.Button
-		$btnEditMappings.Location = New-Object System.Drawing.Point(19, ($y + 5))
-		$btnEditMappings.Size = New-Object System.Drawing.Size(18, 18)
+		$btnEditMappings.Location = New-Object System.Drawing.Point(20, ($y + 3))
+		$btnEditMappings.Size = New-Object System.Drawing.Size(20, 20)
 		$btnEditMappings.Text = [char]0x270E
-		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 9, [System.Drawing.FontStyle]::Regular)
+		$btnEditMappings.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 14, [System.Drawing.FontStyle]::Regular)
 
 		# Tooltip
 		$tooltipEditMappings = New-Object System.Windows.Forms.ToolTip
