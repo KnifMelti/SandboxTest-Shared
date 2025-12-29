@@ -1,3 +1,6 @@
+# User theme preference override (null = follow Windows, $true = force dark, $false = force light)
+$script:UserThemeOverride = $null
+
 function Get-ScriptMappings {
 	<#
 	.SYNOPSIS
@@ -208,8 +211,13 @@ function Show-PackageListEditor {
 		$editorForm.ShowIcon = $false
 	}
 
-	# Detect Windows theme preference
-	$useDarkMode = Get-WindowsThemeSetting
+	# Detect Windows theme preference (use same theme as main form)
+	if ($null -ne $script:UserThemeOverride) {
+		$useDarkMode = $script:UserThemeOverride
+	}
+	else {
+		$useDarkMode = Get-WindowsThemeSetting
+	}
 
 	$y = 15
 	$margin = 15
@@ -692,6 +700,35 @@ namespace DarkMode {
 	}.GetNewClosure())
 }
 
+# Global theme toggle handler - must be in script scope to be accessible from event handlers
+$global:ToggleFormThemeHandler = {
+	param($FormControl, $UpdateButtonColor)
+
+	# Toggle the override state
+	if ($null -eq $script:UserThemeOverride) {
+		# First toggle: invert current Windows theme
+		$windowsPrefersDark = Get-WindowsThemeSetting
+		$script:UserThemeOverride = -not $windowsPrefersDark
+	}
+	else {
+		# Subsequent toggles: flip the override
+		$script:UserThemeOverride = -not $script:UserThemeOverride
+	}
+
+	# Apply the new theme
+	if ($script:UserThemeOverride) {
+		Set-DarkModeTheme -Control $FormControl -UpdateButtonBackColor $UpdateButtonColor
+		Set-DarkTitleBar -Form $FormControl -UseDarkMode $true
+	}
+	else {
+		Set-LightModeTheme -Control $FormControl -UpdateButtonBackColor $UpdateButtonColor
+		Set-DarkTitleBar -Form $FormControl -UseDarkMode $false
+	}
+
+	# Refresh the form
+	$FormControl.Refresh()
+}
+
 # Define the dialog function here since it's needed before the main functions section
 function Show-SandboxTestDialog {
 	<#
@@ -899,8 +936,13 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$form.ShowIcon = $false
 		}
 
-		# Detect Windows theme preference
-		$useDarkMode = Get-WindowsThemeSetting
+		# Detect Windows theme preference (check if user has overridden it)
+		if ($null -ne $script:UserThemeOverride) {
+			$useDarkMode = $script:UserThemeOverride
+		}
+		else {
+			$useDarkMode = Get-WindowsThemeSetting
+		}
 
 		# Define adaptive green color for Update button
 		$updateButtonGreen = if ($useDarkMode) {
@@ -1926,6 +1968,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Set default accept/cancel buttons
 		$form.AcceptButton = $btnOK
 		$form.CancelButton = $btnCancel
+
+		# Add double-click event to toggle dark/light mode
+		$form.Add_DoubleClick({
+			& $global:ToggleFormThemeHandler $form $updateButtonGreen
+		}.GetNewClosure())
 
 		# Apply theme based on Windows settings
 		if ($useDarkMode) {
