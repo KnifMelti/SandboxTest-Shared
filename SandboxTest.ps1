@@ -155,13 +155,11 @@ function SandboxTest {
     $script:HostGeoID = (Get-WinHomeLocation).GeoID
 
     # Detect host dark mode settings to replicate in sandbox
-    $script:HostAppsUseLightTheme = try {
-        (Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -ErrorAction SilentlyContinue).AppsUseLightTheme
-    } catch { 0 }  # Default to dark if unable to detect
-
-    $script:HostSystemUsesLightTheme = try {
-        (Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -ErrorAction SilentlyContinue).SystemUsesLightTheme
-    } catch { 0 }  # Default to dark if unable to detect
+    # Note: Get-WindowsThemeSetting returns $true for dark mode, $false for light mode
+    # We need the registry values (0 = dark, 1 = light) for sandbox replication
+    $isDarkMode = Get-WindowsThemeSetting
+    $script:HostAppsUseLightTheme = if ($isDarkMode) { 0 } else { 1 }
+    $script:HostSystemUsesLightTheme = if ($isDarkMode) { 0 } else { 1 }
 
     # Misc
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

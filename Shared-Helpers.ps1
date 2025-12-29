@@ -1,10 +1,12 @@
 <#
 .SYNOPSIS
-GitHub API helper module with caching and fallback mechanisms
+Shared helper functions for SandboxStart
 
 .DESCRIPTION
-Provides functions for interacting with GitHub API with intelligent caching,
-rate limiting handling, and fallback to Atom feeds when API fails.
+Provides utility functions including:
+- GitHub API interaction with intelligent caching and fallback mechanisms
+- Rate limiting handling
+- Fallback to Atom feeds when API fails
 
 .NOTES
 Author: SandboxStart
@@ -647,6 +649,38 @@ function Get-GitHubLatestRelease {
     $uri = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
 
     return Invoke-GitHubApi -Uri $uri -UseCache:$UseCache -FallbackToFeed
+}
+
+#endregion
+
+#region Windows Theme Detection
+
+function Get-WindowsThemeSetting {
+	<#
+	.SYNOPSIS
+	Detects Windows dark/light mode preference from registry
+
+	.DESCRIPTION
+	Reads the AppsUseLightTheme registry value to determine if dark mode is enabled.
+	Returns $true if dark mode should be used, $false for light mode.
+
+	.OUTPUTS
+	Boolean - $true for dark mode, $false for light mode
+
+	.EXAMPLE
+	$isDark = Get-WindowsThemeSetting
+	if ($isDark) { Write-Host "Dark mode enabled" }
+	#>
+
+	try {
+		$appsUseLightTheme = (Get-ItemProperty -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -ErrorAction SilentlyContinue).AppsUseLightTheme
+		# If value is 0 or cannot be read, use dark mode
+		return ($null -eq $appsUseLightTheme -or $appsUseLightTheme -eq 0)
+	}
+	catch {
+		# Default to dark mode if registry cannot be read
+		return $true
+	}
 }
 
 #endregion
