@@ -230,10 +230,14 @@ function SandboxTest {
         .OUTPUTS
         Nullable Object containing GitHub release details
         #>
-        $releasesAPIResponse = Invoke-RestMethod -Uri $script:ReleasesApiUrl -UseBasicParsing
-        if (!$script:Prerelease) {
-            $releasesAPIResponse = $releasesAPIResponse.Where({ !$_.prerelease })
-        }
+        # Use GitHub API helper with caching and fallback
+        $releasesAPIResponse = Get-GitHubReleases `
+            -Owner "microsoft" `
+            -Repo "winget-cli" `
+            -PerPage 100 `
+            -StableOnly:(!$script:Prerelease) `
+            -UseCache
+
         if (![String]::IsNullOrWhiteSpace($script:WinGetVersion)) {
             $releasesAPIResponse = @($releasesAPIResponse.Where({ $_.tag_name -match $('^v?' + [regex]::escape($script:WinGetVersion)) }))
         }
@@ -463,7 +467,11 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 
         Write-Information '--> Checking Dependencies'
         foreach ($dependency in $script:AppInstallerDependencies) {
-            if ($Clean) { Invoke-FileCleanup -FilePaths $dependency.SaveTo }
+            if ($Clean) {
+                Invoke-FileCleanup -FilePaths $dependency.SaveTo
+                # Clear GitHub API cache when Clean option is selected
+                Clear-GitHubCache
+            }
 
             Write-Verbose "Checking the hash of $($dependency.SaveTo)"
             if (!(Test-FileChecksum $dependency.Checksum $dependency.SaveTo $dependency.Algorithm)) {

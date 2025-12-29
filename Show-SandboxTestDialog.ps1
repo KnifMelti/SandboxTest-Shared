@@ -443,24 +443,25 @@ function Get-StableWinGetVersions {
 	#>
 	try {
 		# Request 100 releases to ensure we get 25 stable ones after filtering pre-releases and checking assets
-		# Assumption: Among the 100 most recent releases, at least 25 will be stable (non-prerelease) with assets
-		# This is typically true for the winget-cli repository which has regular stable releases
-		$releasesApiUrl = 'https://api.github.com/repos/microsoft/winget-cli/releases?per_page=100'
+		# Use GitHub API helper with caching and fallback
 		Write-Verbose "Fetching WinGet releases from GitHub API..."
-		
-		# Fetch releases from GitHub API with timeout and User-Agent header
-		$releases = Invoke-RestMethod -Uri $releasesApiUrl -TimeoutSec 10 -UserAgent "WAU-Settings-GUI" -UseBasicParsing -ErrorAction Stop
-		
-		# Filter to only stable releases (not prerelease) that have assets and get top 25
-		$stableReleases = $releases | Where-Object { 
-			(-not $_.prerelease) -and 
-			($_.assets) -and 
-			($_.assets.Count -gt 0) 
+
+		$releases = Get-GitHubReleases `
+			-Owner "microsoft" `
+			-Repo "winget-cli" `
+			-PerPage 100 `
+			-StableOnly `
+			-UseCache
+
+		# Filter to only releases that have assets and get top 25
+		$stableReleases = $releases | Where-Object {
+			($_.assets) -and
+			($_.assets.Count -gt 0)
 		} | Select-Object -First 25
-		
+
 		# Extract tag names (e.g., "v1.7.10514")
 		$versions = $stableReleases | ForEach-Object { $_.tag_name }
-		
+
 		Write-Verbose "Found $($versions.Count) stable WinGet versions with assets"
 		return $versions
 	}
@@ -513,12 +514,14 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				$oldProgressPreference = $ProgressPreference
 				$ProgressPreference = 'SilentlyContinue'
 
-				# Get folder contents from GitHub API
-				$apiUrl = "https://api.github.com/repos/$GitHubRepo/contents/$GitHubFolder`?ref=$Branch"
-				$files = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 5 -Headers @{'User-Agent'='PowerShell'} -UseBasicParsing
-
-				# Filter for .ps1 files
-				$ps1Files = $files | Where-Object { $_.name -like '*.ps1' -and $_.type -eq 'file' }
+				# Get folder contents from GitHub API using helper with caching
+				$ps1Files = Get-GitHubFolderContents `
+					-Owner ($GitHubRepo -split '/')[0] `
+					-Repo ($GitHubRepo -split '/')[1] `
+					-Path $GitHubFolder `
+					-Branch $Branch `
+					-FilePattern "*.ps1" `
+					-UseCache
 
 				foreach ($file in $ps1Files) {
 					$localPath = Join-Path $LocalFolder $file.name
@@ -602,8 +605,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Check for SandboxStart updates
 		Write-Host "Checking for updates... " -NoNewline -ForegroundColor Cyan
 		try {
-			$apiUrl = 'https://api.github.com/repos/KnifMelti/SandboxStart/releases/latest'
-			$latestRelease = Invoke-RestMethod -Uri $apiUrl -TimeoutSec 5 -Headers @{'User-Agent'='PowerShell'} -UseBasicParsing -ErrorAction Stop
+			# Use GitHub API helper with caching
+			$latestRelease = Get-GitHubLatestRelease `
+				-Owner "KnifMelti" `
+				-Repo "SandboxStart" `
+				-UseCache
 
 			# Get local SandboxStart.ps1 file timestamp
 			$localScriptPath = Join-Path $Script:WorkingDir "SandboxStart.ps1"
