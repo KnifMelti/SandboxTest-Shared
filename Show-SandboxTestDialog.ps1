@@ -976,13 +976,22 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$btnBrowse.Size = New-Object System.Drawing.Size(($controlWidth / 2 - 5), $controlHeight)
 		$btnBrowse.Text = "Folder..."
 		$btnBrowse.Add_Click({
-			$folderDialog = New-Object System.Windows.Forms.FolderBrowserDialog
-			$folderDialog.Description = "Select folder to map in Windows Sandbox"
-			$folderDialog.SelectedPath = $txtMapFolder.Text
-			$folderDialog.ShowNewFolderButton = $false
-			
-			if ($folderDialog.ShowDialog() -eq "OK") {
-				$selectedDir = $folderDialog.SelectedPath
+			# Use OpenFileDialog as folder picker for dark mode support
+			$folderDialog = New-Object System.Windows.Forms.OpenFileDialog
+			$folderDialog.ValidateNames = $false
+			$folderDialog.CheckFileExists = $false
+			$folderDialog.CheckPathExists = $true
+			$folderDialog.FileName = "Select Folder"
+			$folderDialog.Filter = "Folders|*.none"
+			$folderDialog.Title = "Select folder to map in Windows Sandbox"
+
+			# Set initial directory if path exists
+			if (![string]::IsNullOrWhiteSpace($txtMapFolder.Text) -and (Test-Path $txtMapFolder.Text)) {
+				$folderDialog.InitialDirectory = $txtMapFolder.Text
+			}
+
+			if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+				$selectedDir = Split-Path $folderDialog.FileName
 				
 				# Folder selected - use directory logic
 				$txtMapFolder.Text = $selectedDir
