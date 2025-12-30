@@ -685,5 +685,228 @@ function Get-WindowsThemeSetting {
 
 #endregion
 
+#region SandboxStart Theme Preferences
+
+function global:Get-SandboxStartThemePreference {
+	<#
+	.SYNOPSIS
+	Reads SandboxStart theme preference from registry
+
+	.DESCRIPTION
+	Retrieves the user's saved theme mode from registry.
+	Defaults to "Auto" (follow Windows system theme) if not set.
+
+	.OUTPUTS
+	String - "Auto", "Light", "Dark", or "Custom"
+
+	.EXAMPLE
+	$themeMode = Get-SandboxStartThemePreference
+	if ($themeMode -eq "Dark") { Write-Host "Dark theme selected" }
+	#>
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart"
+		$value = (Get-ItemProperty -Path $regPath -Name "ThemeMode" -ErrorAction SilentlyContinue).ThemeMode
+
+		if ($null -eq $value -or $value -notin @("Auto", "Light", "Dark", "Custom")) {
+			return "Auto"
+		}
+
+		return $value
+	}
+	catch {
+		return "Auto"
+	}
+}
+
+function global:Set-SandboxStartThemePreference {
+	<#
+	.SYNOPSIS
+	Saves SandboxStart theme preference to registry
+
+	.DESCRIPTION
+	Stores the user's theme mode selection in registry for persistence across sessions.
+
+	.PARAMETER ThemeMode
+	The theme mode to save: "Auto", "Light", "Dark", or "Custom"
+
+	.EXAMPLE
+	Set-SandboxStartThemePreference -ThemeMode "Dark"
+	#>
+
+	param(
+		[Parameter(Mandatory = $true)]
+		[ValidateSet("Auto", "Light", "Dark", "Custom")]
+		[string]$ThemeMode
+	)
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart"
+
+		# Create registry key if it doesn't exist
+		if (-not (Test-Path $regPath)) {
+			New-Item -Path $regPath -Force | Out-Null
+		}
+
+		# Save theme mode
+		Set-ItemProperty -Path $regPath -Name "ThemeMode" -Value $ThemeMode -Type String
+	}
+	catch {
+		Write-Warning "Failed to save theme preference: $($_.Exception.Message)"
+	}
+}
+
+function global:Get-SandboxStartCustomColors {
+	<#
+	.SYNOPSIS
+	Reads custom color settings from registry
+
+	.DESCRIPTION
+	Retrieves user's custom color configuration for all 6 theme elements.
+	Returns default dark mode colors if not set.
+
+	.OUTPUTS
+	Hashtable with 6 color elements as RGB strings ("R,G,B")
+
+	.EXAMPLE
+	$colors = Get-SandboxStartCustomColors
+	Write-Host "Background: $($colors.BackColor)"
+	#>
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart\CustomColors"
+
+		# Default dark mode colors
+		$defaults = @{
+			BackColor         = "32,32,32"
+			ForeColor         = "255,255,255"
+			ButtonBackColor   = "70,70,70"
+			TextBoxBackColor  = "45,45,45"
+			GrayLabelColor    = "180,180,180"
+			UpdateButtonColor = "60,120,60"
+		}
+
+		if (-not (Test-Path $regPath)) {
+			return $defaults
+		}
+
+		$props = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+
+		# Build hashtable, using defaults for missing values
+		$colors = @{
+			BackColor         = if ($props.BackColor) { $props.BackColor } else { $defaults.BackColor }
+			ForeColor         = if ($props.ForeColor) { $props.ForeColor } else { $defaults.ForeColor }
+			ButtonBackColor   = if ($props.ButtonBackColor) { $props.ButtonBackColor } else { $defaults.ButtonBackColor }
+			TextBoxBackColor  = if ($props.TextBoxBackColor) { $props.TextBoxBackColor } else { $defaults.TextBoxBackColor }
+			GrayLabelColor    = if ($props.GrayLabelColor) { $props.GrayLabelColor } else { $defaults.GrayLabelColor }
+			UpdateButtonColor = if ($props.UpdateButtonColor) { $props.UpdateButtonColor } else { $defaults.UpdateButtonColor }
+		}
+
+		return $colors
+	}
+	catch {
+		Write-Warning "Failed to read custom colors: $($_.Exception.Message)"
+		# Return default dark mode colors on error
+		return @{
+			BackColor         = "32,32,32"
+			ForeColor         = "255,255,255"
+			ButtonBackColor   = "70,70,70"
+			TextBoxBackColor  = "45,45,45"
+			GrayLabelColor    = "180,180,180"
+			UpdateButtonColor = "60,120,60"
+		}
+	}
+}
+
+function global:Set-SandboxStartCustomColors {
+	<#
+	.SYNOPSIS
+	Saves custom color settings to registry
+
+	.DESCRIPTION
+	Stores user's custom color configuration for all 6 theme elements.
+
+	.PARAMETER Colors
+	Hashtable containing all 6 required color elements as RGB strings ("R,G,B")
+
+	.EXAMPLE
+	$colors = @{
+		BackColor = "32,32,32"
+		ForeColor = "255,255,255"
+		ButtonBackColor = "70,70,70"
+		TextBoxBackColor = "45,45,45"
+		GrayLabelColor = "180,180,180"
+		UpdateButtonColor = "60,120,60"
+	}
+	Set-SandboxStartCustomColors -Colors $colors
+	#>
+
+	param(
+		[Parameter(Mandatory = $true)]
+		[hashtable]$Colors
+	)
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart\CustomColors"
+
+		# Validate hashtable contains all required keys
+		$requiredKeys = @("BackColor", "ForeColor", "ButtonBackColor", "TextBoxBackColor", "GrayLabelColor", "UpdateButtonColor")
+		foreach ($key in $requiredKeys) {
+			if (-not $Colors.ContainsKey($key)) {
+				throw "Missing required color element: $key"
+			}
+		}
+
+		# Create registry key if it doesn't exist
+		if (-not (Test-Path $regPath)) {
+			New-Item -Path $regPath -Force | Out-Null
+		}
+
+		# Save each color element
+		Set-ItemProperty -Path $regPath -Name "BackColor" -Value $Colors.BackColor -Type String
+		Set-ItemProperty -Path $regPath -Name "ForeColor" -Value $Colors.ForeColor -Type String
+		Set-ItemProperty -Path $regPath -Name "ButtonBackColor" -Value $Colors.ButtonBackColor -Type String
+		Set-ItemProperty -Path $regPath -Name "TextBoxBackColor" -Value $Colors.TextBoxBackColor -Type String
+		Set-ItemProperty -Path $regPath -Name "GrayLabelColor" -Value $Colors.GrayLabelColor -Type String
+		Set-ItemProperty -Path $regPath -Name "UpdateButtonColor" -Value $Colors.UpdateButtonColor -Type String
+	}
+	catch {
+		Write-Warning "Failed to save custom colors: $($_.Exception.Message)"
+	}
+}
+
+function global:Test-ColorIsDark {
+	<#
+	.SYNOPSIS
+	Determines if a color is dark or light based on perceived brightness
+
+	.DESCRIPTION
+	Calculates perceived brightness using the luminance formula (0.299*R + 0.587*G + 0.114*B).
+	Returns $true if the color is dark (brightness < 128), $false if light.
+	Used to determine appropriate title bar theme for custom colors.
+
+	.PARAMETER Color
+	System.Drawing.Color object to test
+
+	.OUTPUTS
+	Boolean - $true if dark, $false if light
+
+	.EXAMPLE
+	$color = [System.Drawing.Color]::FromArgb(32, 32, 32)
+	if (Test-ColorIsDark -Color $color) { Write-Host "This is a dark color" }
+	#>
+
+	param(
+		[Parameter(Mandatory = $true)]
+		[System.Drawing.Color]$Color
+	)
+
+	# Calculate perceived brightness using luminance formula
+	$brightness = (0.299 * $Color.R + 0.587 * $Color.G + 0.114 * $Color.B)
+	return $brightness -lt 128
+}
+
+#endregion
+
 # Note: Functions are available via dot-sourcing (. script.ps1)
 # No Export-ModuleMember needed when using dot-sourcing

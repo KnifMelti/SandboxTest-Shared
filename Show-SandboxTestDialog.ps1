@@ -1,5 +1,5 @@
-# User theme preference override (null = follow Windows, $true = force dark, $false = force light)
-$script:UserThemeOverride = $null
+# Note: Theme preference is now stored in registry via Get-SandboxStartThemePreference()
+# Old $script:UserThemeOverride variable removed - use registry functions instead
 
 function Get-ScriptMappings {
 	<#
@@ -211,13 +211,8 @@ function Show-PackageListEditor {
 		$editorForm.ShowIcon = $false
 	}
 
-	# Detect Windows theme preference (use same theme as main form)
-	if ($null -ne $script:UserThemeOverride) {
-		$useDarkMode = $script:UserThemeOverride
-	}
-	else {
-		$useDarkMode = Get-WindowsThemeSetting
-	}
+	# Use same theme as main form (from registry preference)
+	# No need to detect here - will use Set-ThemeToForm later
 
 	$y = 15
 	$margin = 15
@@ -388,15 +383,9 @@ Comments: Lines starting with # are ignored.
 	$editorForm.AcceptButton = $btnSave
 	$editorForm.CancelButton = $btnCancel
 
-	# Apply theme based on Windows settings
-	if ($useDarkMode) {
-		Set-DarkModeTheme -Control $editorForm
-		Set-DarkTitleBar -Form $editorForm -UseDarkMode $true
-	}
-	else {
-		Set-LightModeTheme -Control $editorForm
-		Set-DarkTitleBar -Form $editorForm -UseDarkMode $false
-	}
+	# Apply theme based on saved preference
+	# Note: Package list editor doesn't use update button, so pass Empty color
+	Set-ThemeToForm -Form $editorForm -UpdateButtonColor ([System.Drawing.Color]::Empty)
 
 	[void]$editorForm.ShowDialog()
 
@@ -497,7 +486,7 @@ function Get-StableWinGetVersions {
 # ============================================================================
 # Note: Get-WindowsThemeSetting is in Shared-Helpers.ps1 (shared with SandboxTest.ps1)
 
-function Set-DarkModeTheme {
+function global:Set-DarkModeTheme {
 	<#
 	.SYNOPSIS
 	Applies dark theme to a Windows Form and all its controls recursively
@@ -569,11 +558,15 @@ function Set-DarkModeTheme {
 
 	# Recursively apply to child controls
 	foreach ($child in $Control.Controls) {
+		# Skip color picker swatch panels (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch") {
+			continue
+		}
 		Set-DarkModeTheme -Control $child -UpdateButtonBackColor $UpdateButtonBackColor
 	}
 }
 
-function Set-LightModeTheme {
+function global:Set-LightModeTheme {
 	<#
 	.SYNOPSIS
 	Applies light theme to a Windows Form and all its controls recursively
@@ -645,11 +638,15 @@ function Set-LightModeTheme {
 
 	# Recursively apply to child controls
 	foreach ($child in $Control.Controls) {
+		# Skip color picker swatch panels (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch") {
+			continue
+		}
 		Set-LightModeTheme -Control $child -UpdateButtonBackColor $UpdateButtonBackColor
 	}
 }
 
-function Set-DarkTitleBar {
+function global:Set-DarkTitleBar {
 	<#
 	.SYNOPSIS
 	Sets the window title bar to dark or light mode using DwmSetWindowAttribute
@@ -713,33 +710,941 @@ namespace DarkMode {
 	}
 }
 
-# Global theme toggle handler - must be in script scope to be accessible from event handlers
+function global:Set-CustomTheme {
+	<#
+	.SYNOPSIS
+	Applies custom user-defined colors to a Windows Form and all its controls recursively
+
+	.PARAMETER Control
+	The form or control to apply custom theme to
+
+	.PARAMETER CustomColors
+	Hashtable containing 6 color elements as RGB strings ("R,G,B")
+
+	.PARAMETER UpdateButtonBackColor
+	Optional. BackColor override for the update button (adaptive green)
+	#>
+
+	param(
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.Control]$Control,
+
+		[Parameter(Mandatory)]
+		[hashtable]$CustomColors,
+
+		[Parameter(Mandatory = $false)]
+		[System.Drawing.Color]$UpdateButtonBackColor = [System.Drawing.Color]::Empty
+	)
+
+	# Parse color strings from hashtable to Color objects
+	try {
+		$backColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.BackColor.Split(',')[0]), [int]::Parse($CustomColors.BackColor.Split(',')[1]), [int]::Parse($CustomColors.BackColor.Split(',')[2]))
+		$foreColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.ForeColor.Split(',')[0]), [int]::Parse($CustomColors.ForeColor.Split(',')[1]), [int]::Parse($CustomColors.ForeColor.Split(',')[2]))
+		$buttonBackColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.ButtonBackColor.Split(',')[0]), [int]::Parse($CustomColors.ButtonBackColor.Split(',')[1]), [int]::Parse($CustomColors.ButtonBackColor.Split(',')[2]))
+		$textBoxBackColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.TextBoxBackColor.Split(',')[0]), [int]::Parse($CustomColors.TextBoxBackColor.Split(',')[1]), [int]::Parse($CustomColors.TextBoxBackColor.Split(',')[2]))
+		$grayLabelColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.GrayLabelColor.Split(',')[0]), [int]::Parse($CustomColors.GrayLabelColor.Split(',')[1]), [int]::Parse($CustomColors.GrayLabelColor.Split(',')[2]))
+		$updateBtnColor = [System.Drawing.Color]::FromArgb([int]::Parse($CustomColors.UpdateButtonColor.Split(',')[0]), [int]::Parse($CustomColors.UpdateButtonColor.Split(',')[1]), [int]::Parse($CustomColors.UpdateButtonColor.Split(',')[2]))
+	}
+	catch {
+		Write-Warning "Failed to parse custom colors, falling back to dark mode defaults: $($_.Exception.Message)"
+		# Fallback to dark mode if parsing fails
+		$backColor = [System.Drawing.Color]::FromArgb(32, 32, 32)
+		$foreColor = [System.Drawing.Color]::White
+		$buttonBackColor = [System.Drawing.Color]::FromArgb(70, 70, 70)
+		$textBoxBackColor = [System.Drawing.Color]::FromArgb(45, 45, 45)
+		$grayLabelColor = [System.Drawing.Color]::FromArgb(180, 180, 180)
+		$updateBtnColor = [System.Drawing.Color]::FromArgb(60, 120, 60)
+	}
+
+	# Apply base colors
+	$Control.BackColor = $backColor
+	$Control.ForeColor = $foreColor
+
+	# Special handling by control type (similar to Set-DarkModeTheme logic)
+	if ($Control -is [System.Windows.Forms.Button]) {
+		$Control.BackColor = $buttonBackColor
+
+		# Special case: Update button
+		if ($Control.Name -eq 'btnUpdate' -or ($Control.Text -eq [char]0x2B06)) {
+			if ($UpdateButtonBackColor -ne [System.Drawing.Color]::Empty) {
+				$Control.BackColor = $UpdateButtonBackColor
+			}
+			else {
+				$Control.BackColor = $updateBtnColor
+			}
+		}
+	}
+	elseif ($Control -is [System.Windows.Forms.TextBox]) {
+		$Control.BackColor = $textBoxBackColor
+		$Control.ForeColor = $foreColor
+	}
+	elseif ($Control -is [System.Windows.Forms.ComboBox]) {
+		$Control.BackColor = $textBoxBackColor
+		$Control.ForeColor = $foreColor
+	}
+	elseif ($Control -is [System.Windows.Forms.CheckBox]) {
+		$Control.BackColor = $backColor
+		$Control.ForeColor = $foreColor
+	}
+	elseif ($Control -is [System.Windows.Forms.Label]) {
+		# Check if this is a gray label (help text)
+		if ($Control.Name -eq 'lblHelp' -or $Control.ForeColor.ToArgb() -eq [System.Drawing.Color]::Gray.ToArgb()) {
+			$Control.ForeColor = $grayLabelColor
+		}
+		else {
+			$Control.ForeColor = $foreColor
+		}
+	}
+
+	# Recursively apply to child controls
+	foreach ($child in $Control.Controls) {
+		# Skip color picker swatch panels (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch") {
+			continue
+		}
+		Set-CustomTheme -Control $child -CustomColors $CustomColors -UpdateButtonBackColor $UpdateButtonBackColor
+	}
+}
+
+function global:Set-ThemeToForm {
+	<#
+	.SYNOPSIS
+	Applies the selected theme to a Windows Form based on user preference
+
+	.PARAMETER Form
+	The form to apply theme to
+
+	.PARAMETER UpdateButtonColor
+	The color to use for the update button
+	#>
+
+	param(
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.Form]$Form,
+
+		[Parameter(Mandatory)]
+		[System.Drawing.Color]$UpdateButtonColor
+	)
+
+	$themeMode = Get-SandboxStartThemePreference
+
+	switch ($themeMode) {
+		"Auto" {
+			$useDarkMode = Get-WindowsThemeSetting
+			if ($useDarkMode) {
+				Set-DarkModeTheme -Control $Form -UpdateButtonBackColor $UpdateButtonColor
+				Set-DarkTitleBar -Form $Form -UseDarkMode $true
+			}
+			else {
+				Set-LightModeTheme -Control $Form -UpdateButtonBackColor $UpdateButtonColor
+				Set-DarkTitleBar -Form $Form -UseDarkMode $false
+			}
+		}
+		"Light" {
+			Set-LightModeTheme -Control $Form -UpdateButtonBackColor $UpdateButtonColor
+			Set-DarkTitleBar -Form $Form -UseDarkMode $false
+		}
+		"Dark" {
+			Set-DarkModeTheme -Control $Form -UpdateButtonBackColor $UpdateButtonColor
+			Set-DarkTitleBar -Form $Form -UseDarkMode $true
+		}
+		"Custom" {
+			$customColors = Get-SandboxStartCustomColors
+			Set-CustomTheme -Control $Form -CustomColors $customColors -UpdateButtonBackColor $UpdateButtonColor
+			# Detect if background is dark or light for title bar
+			try {
+				$bgColorParts = $customColors.BackColor.Split(',')
+				$bgColor = [System.Drawing.Color]::FromArgb([int]::Parse($bgColorParts[0]), [int]::Parse($bgColorParts[1]), [int]::Parse($bgColorParts[2]))
+				$isDark = Test-ColorIsDark -Color $bgColor
+				Set-DarkTitleBar -Form $Form -UseDarkMode $isDark
+			}
+			catch {
+				# Fallback to dark if color parsing fails
+				Set-DarkTitleBar -Form $Form -UseDarkMode $true
+			}
+		}
+	}
+
+	$Form.Refresh()
+}
+
+function global:Show-ThemeContextMenu {
+	<#
+	.SYNOPSIS
+	Creates a context menu for theme selection
+
+	.PARAMETER Form
+	The form to attach the menu to
+
+	.PARAMETER UpdateButtonColor
+	The color to use for the update button
+
+	.OUTPUTS
+	ContextMenuStrip object
+	#>
+
+	param(
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.Form]$Form,
+
+		[Parameter(Mandatory)]
+		[System.Drawing.Color]$UpdateButtonColor
+	)
+
+	# Get current theme preference
+	$currentTheme = Get-SandboxStartThemePreference
+
+	# Create context menu
+	$contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+
+	# Theme context menu to match form
+	$menuBackColor = $Form.BackColor
+	$menuForeColor = $Form.ForeColor
+	$contextMenu.BackColor = $menuBackColor
+	$contextMenu.ForeColor = $menuForeColor
+
+	# Store references for use in event handlers
+	$menuForm = $Form
+	$menuColor = $UpdateButtonColor
+
+	# Add "Theme" header (disabled, acts as label)
+	$headerItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$headerItem.Text = "Theme"
+	$headerItem.Enabled = $false
+	$headerItem.BackColor = $menuBackColor
+	$headerItem.ForeColor = $menuForeColor
+	$contextMenu.Items.Add($headerItem) | Out-Null
+
+	# Add separator
+	$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
+	# Add theme options
+	$autoItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$autoItem.Text = "Auto (Follow System)"
+	$autoItem.Checked = ($currentTheme -eq "Auto")
+	$autoItem.BackColor = $menuBackColor
+	$autoItem.ForeColor = $menuForeColor
+	$autoItem.Add_Click({
+			Set-SandboxStartThemePreference -ThemeMode "Auto"
+			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+		}.GetNewClosure())
+	$contextMenu.Items.Add($autoItem) | Out-Null
+
+	$lightItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$lightItem.Text = "Light"
+	$lightItem.Checked = ($currentTheme -eq "Light")
+	$lightItem.BackColor = $menuBackColor
+	$lightItem.ForeColor = $menuForeColor
+	$lightItem.Add_Click({
+			Set-SandboxStartThemePreference -ThemeMode "Light"
+			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+		}.GetNewClosure())
+	$contextMenu.Items.Add($lightItem) | Out-Null
+
+	$darkItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$darkItem.Text = "Dark"
+	$darkItem.Checked = ($currentTheme -eq "Dark")
+	$darkItem.BackColor = $menuBackColor
+	$darkItem.ForeColor = $menuForeColor
+	$darkItem.Add_Click({
+			Set-SandboxStartThemePreference -ThemeMode "Dark"
+			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+		}.GetNewClosure())
+	$contextMenu.Items.Add($darkItem) | Out-Null
+
+	# Add separator
+	$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
+	# Add custom colors option
+	$customItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$customItem.Text = "Custom..."
+	$customItem.Checked = ($currentTheme -eq "Custom")
+	$customItem.BackColor = $menuBackColor
+	$customItem.ForeColor = $menuForeColor
+	$customItem.Add_Click({
+			Show-ColorPickerDialog -ParentForm $menuForm -UpdateButtonColor $menuColor
+		}.GetNewClosure())
+	$contextMenu.Items.Add($customItem) | Out-Null
+
+	return $contextMenu
+}
+
+function global:Show-ColorPickerDialog {
+	<#
+	.SYNOPSIS
+	Shows advanced color picker dialog for customizing theme colors
+
+	.PARAMETER ParentForm
+	The parent form
+
+	.PARAMETER UpdateButtonColor
+	The color to use for the update button
+	#>
+
+	param(
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.Form]$ParentForm,
+
+		[Parameter(Mandatory)]
+		[System.Drawing.Color]$UpdateButtonColor
+	)
+
+	# Save original theme state (for Cancel button to restore)
+	$originalTheme = Get-SandboxStartThemePreference
+	$originalColors = Get-SandboxStartCustomColors
+
+	# Load current custom colors
+	$currentColors = Get-SandboxStartCustomColors
+
+	# Define preset color schemes
+	$presets = @{
+		"Visual Studio Dark (Default)" = @{
+			BackColor = "45,45,48"
+			ForeColor = "241,241,241"
+			ButtonBackColor = "62,62,66"
+			TextBoxBackColor = "37,37,38"
+			GrayLabelColor = "133,133,133"
+			UpdateButtonColor = "0,122,204"
+		}
+		"Visual Studio Light" = @{
+			BackColor = "246,246,246"
+			ForeColor = "30,30,30"
+			ButtonBackColor = "238,238,238"
+			TextBoxBackColor = "255,255,255"
+			GrayLabelColor = "120,120,120"
+			UpdateButtonColor = "0,122,204"
+		}
+		"GitHub Dark" = @{
+			BackColor = "13,17,23"
+			ForeColor = "230,237,243"
+			ButtonBackColor = "33,38,45"
+			TextBoxBackColor = "22,27,34"
+			GrayLabelColor = "139,148,158"
+			UpdateButtonColor = "88,166,255"
+		}
+		"Monokai" = @{
+			BackColor = "39,40,34"
+			ForeColor = "248,248,242"
+			ButtonBackColor = "73,72,62"
+			TextBoxBackColor = "30,31,27"
+			GrayLabelColor = "117,113,94"
+			UpdateButtonColor = "102,217,239"
+		}
+		"Dracula" = @{
+			BackColor = "40,42,54"
+			ForeColor = "248,248,242"
+			ButtonBackColor = "68,71,90"
+			TextBoxBackColor = "33,34,44"
+			GrayLabelColor = "98,114,164"
+			UpdateButtonColor = "139,233,253"
+		}
+		"Nord" = @{
+			BackColor = "46,52,64"
+			ForeColor = "236,239,244"
+			ButtonBackColor = "59,66,82"
+			TextBoxBackColor = "39,44,55"
+			GrayLabelColor = "129,161,193"
+			UpdateButtonColor = "136,192,208"
+		}
+	}
+
+	# Create dialog form
+	$dialog = New-Object System.Windows.Forms.Form
+	$dialog.Text = "Custom Theme Colors"
+	$dialog.Size = New-Object System.Drawing.Size(520, 680)
+	$dialog.StartPosition = "CenterParent"
+	$dialog.FormBorderStyle = "FixedDialog"
+	$dialog.MaximizeBox = $false
+	$dialog.MinimizeBox = $false
+
+	# Set form icon (same as main form)
+	try {
+		if ($Script:AppIcon) {
+			$dialog.Icon = $Script:AppIcon
+			$dialog.ShowIcon = $true
+		}
+		else {
+			$dialog.ShowIcon = $false
+		}
+	}
+	catch {
+		$dialog.ShowIcon = $false
+	}
+
+	# Current Y position for controls
+	$yPos = 20
+
+	# Preset scheme label
+	$presetLabel = New-Object System.Windows.Forms.Label
+	$presetLabel.Location = New-Object System.Drawing.Point(20, $yPos)
+	$presetLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$presetLabel.Text = "Preset Schemes:"
+	$dialog.Controls.Add($presetLabel)
+
+	# Preset dropdown
+	$presetCombo = New-Object System.Windows.Forms.ComboBox
+	$comboY = $yPos - 2
+	$presetCombo.Location = New-Object System.Drawing.Point(120, $comboY)
+	$presetCombo.Size = New-Object System.Drawing.Size(360, 25)
+	$presetCombo.DropDownStyle = "DropDownList"
+	$presetCombo.Items.Add("Current Colors") | Out-Null
+	foreach ($presetName in $presets.Keys | Sort-Object) {
+		$presetCombo.Items.Add($presetName) | Out-Null
+	}
+	$presetCombo.SelectedIndex = 0
+	$dialog.Controls.Add($presetCombo)
+
+	$yPos = $yPos + 40
+
+	# Group box for color elements
+	$colorGroup = New-Object System.Windows.Forms.GroupBox
+	$colorGroup.Location = New-Object System.Drawing.Point(20, $yPos)
+	$colorGroup.Size = New-Object System.Drawing.Size(460, 240)
+	$colorGroup.Text = "Color Elements"
+	$dialog.Controls.Add($colorGroup)
+
+	# Helper function to create color picker row
+	$colorPickerRows = @{}
+	$rowYPos = 25
+
+	# Create 6 color picker rows manually (inline to avoid scope issues)
+	# Background Color
+	$rgb = $currentColors.BackColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "Background Color:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.BackColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "BackColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["BackColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "BackColor"}
+	$rowYPos = $rowYPos + 35
+
+	# Text Color
+	$rgb = $currentColors.ForeColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "Text Color:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.ForeColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "ForeColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["ForeColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "ForeColor"}
+	$rowYPos = $rowYPos + 35
+
+	# Button Background
+	$rgb = $currentColors.ButtonBackColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "Button Background:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.ButtonBackColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "ButtonBackColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["ButtonBackColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "ButtonBackColor"}
+	$rowYPos = $rowYPos + 35
+
+	# TextBox Background
+	$rgb = $currentColors.TextBoxBackColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "TextBox Background:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.TextBoxBackColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "TextBoxBackColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["TextBoxBackColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "TextBoxBackColor"}
+	$rowYPos = $rowYPos + 35
+
+	# Gray Label Color
+	$rgb = $currentColors.GrayLabelColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "Gray Label Color:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.GrayLabelColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "GrayLabelColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["GrayLabelColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "GrayLabelColor"}
+	$rowYPos = $rowYPos + 35
+
+	# Accent Button Color
+	$rgb = $currentColors.UpdateButtonColor -split ','
+	$initialColor = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+	$labelY = $rowYPos + 5
+	$label = New-Object System.Windows.Forms.Label
+	$label.Location = New-Object System.Drawing.Point(10, $labelY)
+	$label.Size = New-Object System.Drawing.Size(160, 20)
+	$label.Text = "Accent Button Color:"
+	$colorGroup.Controls.Add($label)
+
+	$panel = New-Object System.Windows.Forms.Panel
+	$panel.Location = New-Object System.Drawing.Point(175, $rowYPos)
+	$panel.Size = New-Object System.Drawing.Size(40, 25)
+	$panel.BorderStyle = "Fixed3D"
+	$panel.BackColor = $initialColor
+	$panel.Tag = "ColorPickerSwatch"
+	$colorGroup.Controls.Add($panel)
+
+	$rgbLabel = New-Object System.Windows.Forms.Label
+	$rgbLabel.Location = New-Object System.Drawing.Point(220, $labelY)
+	$rgbLabel.Size = New-Object System.Drawing.Size(100, 20)
+	$rgbLabel.Text = "RGB: $($currentColors.UpdateButtonColor)"
+	$colorGroup.Controls.Add($rgbLabel)
+
+	$button = New-Object System.Windows.Forms.Button
+	$button.Location = New-Object System.Drawing.Point(330, $rowYPos)
+	$button.Size = New-Object System.Drawing.Size(110, 25)
+	$button.Text = "Choose..."
+	$button.Tag = "UpdateButtonColor"
+	$colorGroup.Controls.Add($button)
+
+	$colorPickerRows["UpdateButtonColor"] = @{Panel = $panel; RgbLabel = $rgbLabel; Button = $button; ColorKey = "UpdateButtonColor"}
+
+	$yPos = $yPos + 250
+
+	# Preview group box
+	$previewGroup = New-Object System.Windows.Forms.GroupBox
+	$previewGroup.Location = New-Object System.Drawing.Point(20, $yPos)
+	$previewGroup.Size = New-Object System.Drawing.Size(460, 230)
+	$previewGroup.Text = "Preview"
+	$dialog.Controls.Add($previewGroup)
+
+	# Create preview controls
+	$previewPanel = New-Object System.Windows.Forms.Panel
+	$previewPanel.Location = New-Object System.Drawing.Point(10, 20)
+	$previewPanel.Size = New-Object System.Drawing.Size(440, 200)
+	$previewPanel.BorderStyle = "Fixed3D"
+	$previewGroup.Controls.Add($previewPanel)
+
+	# Preview label
+	$previewLabel = New-Object System.Windows.Forms.Label
+	$previewLabel.Location = New-Object System.Drawing.Point(10, 10)
+	$previewLabel.Size = New-Object System.Drawing.Size(200, 20)
+	$previewLabel.Text = "Sample text label"
+	$previewPanel.Controls.Add($previewLabel)
+
+	# Preview gray label
+	$previewGrayLabel = New-Object System.Windows.Forms.Label
+	$previewGrayLabel.Location = New-Object System.Drawing.Point(10, 40)
+	$previewGrayLabel.Size = New-Object System.Drawing.Size(200, 20)
+	$previewGrayLabel.Text = "Disabled/gray label"
+	$previewPanel.Controls.Add($previewGrayLabel)
+
+	# Preview button
+	$previewButton = New-Object System.Windows.Forms.Button
+	$previewButton.Location = New-Object System.Drawing.Point(10, 70)
+	$previewButton.Size = New-Object System.Drawing.Size(120, 30)
+	$previewButton.Text = "Sample Button"
+	$previewButton.FlatStyle = "Flat"
+	$previewPanel.Controls.Add($previewButton)
+
+	# Preview accent button
+	$previewAccentButton = New-Object System.Windows.Forms.Button
+	$previewAccentButton.Location = New-Object System.Drawing.Point(140, 70)
+	$previewAccentButton.Size = New-Object System.Drawing.Size(140, 30)
+	$previewAccentButton.Text = "Accent Button"
+	$previewAccentButton.FlatStyle = "Flat"
+	$previewPanel.Controls.Add($previewAccentButton)
+
+	# Preview textbox
+	$previewTextBox = New-Object System.Windows.Forms.TextBox
+	$previewTextBox.Location = New-Object System.Drawing.Point(10, 110)
+	$previewTextBox.Size = New-Object System.Drawing.Size(270, 25)
+	$previewTextBox.Text = "Sample text input"
+	$previewPanel.Controls.Add($previewTextBox)
+
+	# Preview combobox
+	$previewCombo = New-Object System.Windows.Forms.ComboBox
+	$previewCombo.Location = New-Object System.Drawing.Point(10, 145)
+	$previewCombo.Size = New-Object System.Drawing.Size(270, 25)
+	$previewCombo.Items.AddRange(@("Option 1", "Option 2", "Option 3"))
+	$previewCombo.SelectedIndex = 0
+	$previewPanel.Controls.Add($previewCombo)
+
+	# Function to update preview with current colors
+	function global:Update-ColorPreview {
+		param($ColorValues)
+
+		# Parse colors
+		$backRgb = $ColorValues.BackColor -split ','
+		$foreRgb = $ColorValues.ForeColor -split ','
+		$buttonBackRgb = $ColorValues.ButtonBackColor -split ','
+		$textBoxBackRgb = $ColorValues.TextBoxBackColor -split ','
+		$grayRgb = $ColorValues.GrayLabelColor -split ','
+		$accentRgb = $ColorValues.UpdateButtonColor -split ','
+
+		$backColor = [System.Drawing.Color]::FromArgb([int]$backRgb[0], [int]$backRgb[1], [int]$backRgb[2])
+		$foreColor = [System.Drawing.Color]::FromArgb([int]$foreRgb[0], [int]$foreRgb[1], [int]$foreRgb[2])
+		$buttonBackColor = [System.Drawing.Color]::FromArgb([int]$buttonBackRgb[0], [int]$buttonBackRgb[1], [int]$buttonBackRgb[2])
+		$textBoxBackColor = [System.Drawing.Color]::FromArgb([int]$textBoxBackRgb[0], [int]$textBoxBackRgb[1], [int]$textBoxBackRgb[2])
+		$grayColor = [System.Drawing.Color]::FromArgb([int]$grayRgb[0], [int]$grayRgb[1], [int]$grayRgb[2])
+		$accentColor = [System.Drawing.Color]::FromArgb([int]$accentRgb[0], [int]$accentRgb[1], [int]$accentRgb[2])
+
+		# Apply to preview controls
+		$previewPanel.BackColor = $backColor
+		$previewLabel.ForeColor = $foreColor
+		$previewGrayLabel.ForeColor = $grayColor
+
+		$previewButton.BackColor = $buttonBackColor
+		$previewButton.ForeColor = $foreColor
+		$previewButton.FlatAppearance.BorderColor = $foreColor
+
+		$previewAccentButton.BackColor = $accentColor
+		$previewAccentButton.ForeColor = $foreColor
+		$previewAccentButton.FlatAppearance.BorderColor = $foreColor
+
+		$previewTextBox.BackColor = $textBoxBackColor
+		$previewTextBox.ForeColor = $foreColor
+
+		$previewCombo.BackColor = $textBoxBackColor
+		$previewCombo.ForeColor = $foreColor
+	}
+
+	# Initial preview update
+	Update-ColorPreview -ColorValues $currentColors
+
+	# Handle color picker button clicks
+	foreach ($key in $colorPickerRows.Keys) {
+		$row = $colorPickerRows[$key]
+		$row.Button.Add_Click({
+			param($eventSender, $e)
+
+			$colorKey = $eventSender.Tag
+			$currentRow = $colorPickerRows[$colorKey]
+
+			# Open ColorDialog
+			$colorDialog = New-Object System.Windows.Forms.ColorDialog
+			$colorDialog.AllowFullOpen = $true
+			$colorDialog.FullOpen = $true
+			$colorDialog.Color = $currentRow.Panel.BackColor
+
+			if ($colorDialog.ShowDialog() -eq 'OK') {
+				$selectedColor = $colorDialog.Color
+				$rgbString = "$($selectedColor.R),$($selectedColor.G),$($selectedColor.B)"
+
+				# Update panel and label
+				$currentRow.Panel.BackColor = $selectedColor
+				$currentRow.RgbLabel.Text = "RGB: $rgbString"
+
+				# Update preview
+				$tempColors = @{
+					BackColor = $colorPickerRows["BackColor"].RgbLabel.Text -replace 'RGB: ', ''
+					ForeColor = $colorPickerRows["ForeColor"].RgbLabel.Text -replace 'RGB: ', ''
+					ButtonBackColor = $colorPickerRows["ButtonBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+					TextBoxBackColor = $colorPickerRows["TextBoxBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+					GrayLabelColor = $colorPickerRows["GrayLabelColor"].RgbLabel.Text -replace 'RGB: ', ''
+					UpdateButtonColor = $colorPickerRows["UpdateButtonColor"].RgbLabel.Text -replace 'RGB: ', ''
+				}
+				Update-ColorPreview -ColorValues $tempColors
+			}
+		}.GetNewClosure())
+	}
+
+	# Handle preset selection
+	$presetCombo.Add_SelectedIndexChanged({
+		$selectedPreset = $presetCombo.SelectedItem
+
+		if ($selectedPreset -ne "Current Colors" -and $presets.ContainsKey($selectedPreset)) {
+			$presetColors = $presets[$selectedPreset]
+
+			# Update all color pickers
+			foreach ($key in $presetColors.Keys) {
+				$rgb = $presetColors[$key] -split ','
+				$color = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+				$colorPickerRows[$key].Panel.BackColor = $color
+				$colorPickerRows[$key].RgbLabel.Text = "RGB: $($presetColors[$key])"
+			}
+
+			# Update preview
+			Update-ColorPreview -ColorValues $presetColors
+		}
+	}.GetNewClosure())
+
+	$yPos = $yPos + 240
+
+	# Bottom buttons
+	$buttonY = $yPos + 10
+	$buttonWidth = 90
+	$buttonSpacing = 10
+
+	# Reset button
+	$resetButton = New-Object System.Windows.Forms.Button
+	$resetButton.Location = New-Object System.Drawing.Point(20, $buttonY)
+	$resetButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
+	$resetButton.Text = "Reset"
+	$resetButton.Add_Click({
+		# Find "Visual Studio Dark (Default)" in the combo
+		$defaultIndex = -1
+		for ($i = 0; $i -lt $presetCombo.Items.Count; $i++) {
+			if ($presetCombo.Items[$i] -eq "Visual Studio Dark (Default)") {
+				$defaultIndex = $i
+				break
+			}
+		}
+
+		if ($defaultIndex -ge 0) {
+			# If already selected, manually update colors
+			if ($presetCombo.SelectedIndex -eq $defaultIndex) {
+				$defaultColors = $presets["Visual Studio Dark (Default)"]
+
+				# Update all color pickers
+				foreach ($key in $defaultColors.Keys) {
+					$rgb = $defaultColors[$key] -split ','
+					$color = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+					$colorPickerRows[$key].Panel.BackColor = $color
+					$colorPickerRows[$key].RgbLabel.Text = "RGB: $($defaultColors[$key])"
+				}
+
+				# Update preview
+				Update-ColorPreview -ColorValues $defaultColors
+			} else {
+				# Just change selection, event handler will update
+				$presetCombo.SelectedIndex = $defaultIndex
+			}
+		}
+	}.GetNewClosure())
+	$dialog.Controls.Add($resetButton)
+
+	# Preview button (temporarily apply without saving)
+	$previewButton = New-Object System.Windows.Forms.Button
+	$previewX = 20 + $buttonWidth + $buttonSpacing
+	$previewButton.Location = New-Object System.Drawing.Point($previewX, $buttonY)
+	$previewButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
+	$previewButton.Text = "Preview"
+	$previewButton.Add_Click({
+		# Collect current colors from UI
+		$newColors = @{
+			BackColor = $colorPickerRows["BackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ForeColor = $colorPickerRows["ForeColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ButtonBackColor = $colorPickerRows["ButtonBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			TextBoxBackColor = $colorPickerRows["TextBoxBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			GrayLabelColor = $colorPickerRows["GrayLabelColor"].RgbLabel.Text -replace 'RGB: ', ''
+			UpdateButtonColor = $colorPickerRows["UpdateButtonColor"].RgbLabel.Text -replace 'RGB: ', ''
+		}
+
+		# Apply to parent form using custom theme (but don't save to registry yet)
+		$updateRgb = $newColors.UpdateButtonColor -split ','
+		$updateColor = [System.Drawing.Color]::FromArgb([int]$updateRgb[0], [int]$updateRgb[1], [int]$updateRgb[2])
+		Set-CustomTheme -Control $ParentForm -CustomColors $newColors -UpdateButtonBackColor $updateColor
+
+		# Update title bar based on background brightness
+		$bgRgb = $newColors.BackColor -split ','
+		$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+		$isDark = Test-ColorIsDark -Color $bgColor
+		Set-DarkTitleBar -Form $ParentForm -UseDarkMode $isDark
+	}.GetNewClosure())
+	$dialog.Controls.Add($previewButton)
+
+	# OK button
+	$okButton = New-Object System.Windows.Forms.Button
+	$okX = 480 - $buttonWidth - $buttonSpacing - $buttonWidth - $buttonSpacing
+	$okButton.Location = New-Object System.Drawing.Point($okX, $buttonY)
+	$okButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
+	$okButton.Text = "OK"
+	$okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+	$okButton.Add_Click({
+		# Same as Apply, but also closes dialog
+		$newColors = @{
+			BackColor = $colorPickerRows["BackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ForeColor = $colorPickerRows["ForeColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ButtonBackColor = $colorPickerRows["ButtonBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			TextBoxBackColor = $colorPickerRows["TextBoxBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			GrayLabelColor = $colorPickerRows["GrayLabelColor"].RgbLabel.Text -replace 'RGB: ', ''
+			UpdateButtonColor = $colorPickerRows["UpdateButtonColor"].RgbLabel.Text -replace 'RGB: ', ''
+		}
+
+		Set-SandboxStartCustomColors -Colors $newColors
+		Set-SandboxStartThemePreference -ThemeMode "Custom"
+
+		$updateRgb = $newColors.UpdateButtonColor -split ','
+		$updateColor = [System.Drawing.Color]::FromArgb([int]$updateRgb[0], [int]$updateRgb[1], [int]$updateRgb[2])
+		Set-CustomTheme -Control $ParentForm -CustomColors $newColors -UpdateButtonBackColor $updateColor
+
+		# Update title bar based on background brightness
+		$bgRgb = $newColors.BackColor -split ','
+		$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+		$isDark = Test-ColorIsDark -Color $bgColor
+		Set-DarkTitleBar -Form $ParentForm -UseDarkMode $isDark
+
+		# Refresh context menu to show Custom checkmark
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor
+	}.GetNewClosure())
+	$dialog.Controls.Add($okButton)
+
+	# Cancel button (restore original theme)
+	$cancelButton = New-Object System.Windows.Forms.Button
+	$cancelX = 480 - $buttonWidth - $buttonSpacing
+	$cancelButton.Location = New-Object System.Drawing.Point($cancelX, $buttonY)
+	$cancelButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
+	$cancelButton.Text = "Cancel"
+	$cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+	$cancelButton.Add_Click({
+		# Restore original theme
+		if ($originalTheme -eq "Custom") {
+			$updateRgb = $originalColors.UpdateButtonColor -split ','
+			$updateColor = [System.Drawing.Color]::FromArgb([int]$updateRgb[0], [int]$updateRgb[1], [int]$updateRgb[2])
+			Set-CustomTheme -Control $ParentForm -CustomColors $originalColors -UpdateButtonBackColor $updateColor
+
+			$bgRgb = $originalColors.BackColor -split ','
+			$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+			$isDark = Test-ColorIsDark -Color $bgColor
+			Set-DarkTitleBar -Form $ParentForm -UseDarkMode $isDark
+		} else {
+			Set-ThemeToForm -Form $ParentForm -UpdateButtonColor $UpdateButtonColor
+		}
+
+		# Restore context menu
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor
+	}.GetNewClosure())
+	$dialog.Controls.Add($cancelButton)
+
+	# Set accept/cancel buttons
+	$dialog.AcceptButton = $okButton
+	$dialog.CancelButton = $cancelButton
+
+	# Apply current theme to the dialog
+	$currentTheme = Get-SandboxStartThemePreference
+	if ($currentTheme -eq "Custom") {
+		$customColors = Get-SandboxStartCustomColors
+		$updateRgb = $customColors.UpdateButtonColor -split ','
+		$themeUpdateColor = [System.Drawing.Color]::FromArgb([int]$updateRgb[0], [int]$updateRgb[1], [int]$updateRgb[2])
+		Set-CustomTheme -Control $dialog -CustomColors $customColors -UpdateButtonBackColor $themeUpdateColor
+	} else {
+		Set-ThemeToForm -Form $dialog -UpdateButtonColor $UpdateButtonColor
+	}
+
+	# Show dialog
+	$dialog.ShowDialog() | Out-Null
+}
+
+# DEPRECATED: Old theme toggle handler - replaced with right-click context menu
+# Kept for reference, no longer used
 $global:ToggleFormThemeHandler = {
 	param($FormControl, $UpdateButtonColor)
-
-	# Toggle the override state
-	if ($null -eq $script:UserThemeOverride) {
-		# First toggle: invert current Windows theme
-		$windowsPrefersDark = Get-WindowsThemeSetting
-		$script:UserThemeOverride = -not $windowsPrefersDark
-	}
-	else {
-		# Subsequent toggles: flip the override
-		$script:UserThemeOverride = -not $script:UserThemeOverride
-	}
-
-	# Apply the new theme
-	if ($script:UserThemeOverride) {
-		Set-DarkModeTheme -Control $FormControl -UpdateButtonBackColor $UpdateButtonColor
-		Set-DarkTitleBar -Form $FormControl -UseDarkMode $true
-	}
-	else {
-		Set-LightModeTheme -Control $FormControl -UpdateButtonBackColor $UpdateButtonColor
-		Set-DarkTitleBar -Form $FormControl -UseDarkMode $false
-	}
-
-	# Refresh the form
-	$FormControl.Refresh()
+	# This function is deprecated and no longer called
+	# Theme selection now done via right-click context menu
 }
 
 # Define the dialog function here since it's needed before the main functions section
@@ -949,16 +1854,18 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$form.ShowIcon = $false
 		}
 
-		# Detect Windows theme preference (check if user has overridden it)
-		if ($null -ne $script:UserThemeOverride) {
-			$useDarkMode = $script:UserThemeOverride
-		}
-		else {
-			$useDarkMode = Get-WindowsThemeSetting
+		# Define adaptive green color for Update button based on theme
+		# Note: Will be determined after theme is applied
+		$themeMode = Get-SandboxStartThemePreference
+		$tempDark = if ($themeMode -eq "Auto") {
+			Get-WindowsThemeSetting
+		} elseif ($themeMode -eq "Dark" -or $themeMode -eq "Custom") {
+			$true
+		} else {
+			$false
 		}
 
-		# Define adaptive green color for Update button
-		$updateButtonGreen = if ($useDarkMode) {
+		$updateButtonGreen = if ($tempDark) {
 			[System.Drawing.Color]::FromArgb(60, 120, 60)  # Dark mode: muted green
 		} else {
 			[System.Drawing.Color]::LightGreen  # Light mode: bright green
@@ -1982,20 +2889,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$form.AcceptButton = $btnOK
 		$form.CancelButton = $btnCancel
 
-		# Add double-click event to toggle dark/light mode
-		$form.Add_DoubleClick({
-			& $global:ToggleFormThemeHandler $form $updateButtonGreen
-		}.GetNewClosure())
+		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
+		Set-ThemeToForm -Form $form -UpdateButtonColor $updateButtonGreen
 
-		# Apply theme based on Windows settings
-		if ($useDarkMode) {
-			Set-DarkModeTheme -Control $form -UpdateButtonBackColor $updateButtonGreen
-			Set-DarkTitleBar -Form $form -UseDarkMode $true
-		}
-		else {
-			Set-LightModeTheme -Control $form -UpdateButtonBackColor $updateButtonGreen
-			Set-DarkTitleBar -Form $form -UseDarkMode $false
-		}
+		# Attach right-click context menu for theme selection (AFTER theme is applied)
+		$form.ContextMenuStrip = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen
 
 		# Show dialog (modal)
 		[void]$form.ShowDialog()
