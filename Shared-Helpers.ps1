@@ -875,6 +875,210 @@ function global:Set-SandboxStartCustomColors {
 	}
 }
 
+function global:Export-SandboxStartTheme {
+	<#
+	.SYNOPSIS
+	Exports a custom theme to a JSON file
+
+	.DESCRIPTION
+	Saves custom theme colors to a JSON file in the themes directory.
+	Creates the themes directory if it doesn't exist.
+
+	.PARAMETER Colors
+	Hashtable containing the 6 color elements (BackColor, ForeColor, ButtonBackColor, TextBoxBackColor, GrayLabelColor, UpdateButtonColor)
+
+	.PARAMETER ThemeName
+	Name of the theme (used as filename)
+
+	.PARAMETER FilePath
+	Optional. Full path to save file. If not specified, saves to "$PSScriptRoot\..\themes\$ThemeName.json"
+
+	.EXAMPLE
+	Export-SandboxStartTheme -Colors $myColors -ThemeName "My Matrix Theme"
+
+	.OUTPUTS
+	Returns the full path to the saved file
+	#>
+	param(
+		[Parameter(Mandatory = $true)]
+		[hashtable]$Colors,
+
+		[Parameter(Mandatory = $true)]
+		[string]$ThemeName,
+
+		[Parameter(Mandatory = $false)]
+		[string]$FilePath
+	)
+
+	try {
+		# Determine save path
+		if (-not $FilePath) {
+			$themesDir = Join-Path $PSScriptRoot "..\themes"
+			if (-not (Test-Path $themesDir)) {
+				New-Item -ItemType Directory -Path $themesDir -Force | Out-Null
+			}
+
+			# Sanitize theme name for filename
+			$safeThemeName = $ThemeName -replace '[\\/:*?"<>|]', '_'
+			$FilePath = Join-Path $themesDir "$safeThemeName.json"
+		}
+
+		# Create theme object
+		$themeObject = @{
+			ThemeName   = $ThemeName
+			CreatedDate = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
+			Colors      = @{
+				BackColor         = $Colors.BackColor
+				ForeColor         = $Colors.ForeColor
+				ButtonBackColor   = $Colors.ButtonBackColor
+				TextBoxBackColor  = $Colors.TextBoxBackColor
+				GrayLabelColor    = $Colors.GrayLabelColor
+				UpdateButtonColor = $Colors.UpdateButtonColor
+			}
+		}
+
+		# Export to JSON
+		$themeObject | ConvertTo-Json -Depth 3 | Out-File -FilePath $FilePath -Encoding UTF8
+
+		return $FilePath
+	}
+	catch {
+		Write-Error "Failed to export theme: $($_.Exception.Message)"
+		return $null
+	}
+}
+
+function global:Import-SandboxStartTheme {
+	<#
+	.SYNOPSIS
+	Imports a custom theme from a JSON file
+
+	.DESCRIPTION
+	Loads custom theme colors from a JSON file and validates the structure.
+
+	.PARAMETER FilePath
+	Full path to the JSON theme file
+
+	.EXAMPLE
+	$theme = Import-SandboxStartTheme -FilePath "C:\themes\MyTheme.json"
+
+	.OUTPUTS
+	Returns hashtable with ThemeName and Colors properties, or $null on error
+	#>
+	param(
+		[Parameter(Mandatory = $true)]
+		[string]$FilePath
+	)
+
+	try {
+		# Check if file exists
+		if (-not (Test-Path $FilePath)) {
+			Write-Error "Theme file not found: $FilePath"
+			return $null
+		}
+
+		# Read and parse JSON
+		$json = Get-Content -Path $FilePath -Raw -Encoding UTF8
+		$themeObject = $json | ConvertFrom-Json
+
+		# Validate required properties
+		if (-not $themeObject.Colors) {
+			Write-Error "Invalid theme file: Missing Colors property"
+			return $null
+		}
+
+		$requiredKeys = @("BackColor", "ForeColor", "ButtonBackColor", "TextBoxBackColor", "GrayLabelColor", "UpdateButtonColor")
+		$missingKeys = @()
+
+		foreach ($key in $requiredKeys) {
+			if (-not $themeObject.Colors.PSObject.Properties[$key]) {
+				$missingKeys += $key
+			}
+		}
+
+		if ($missingKeys.Count -gt 0) {
+			Write-Error "Invalid theme file: Missing color keys: $($missingKeys -join ', ')"
+			return $null
+		}
+
+		# Return as hashtable
+		return @{
+			ThemeName = if ($themeObject.ThemeName) { $themeObject.ThemeName } else { "Imported Theme" }
+			Colors    = @{
+				BackColor         = $themeObject.Colors.BackColor
+				ForeColor         = $themeObject.Colors.ForeColor
+				ButtonBackColor   = $themeObject.Colors.ButtonBackColor
+				TextBoxBackColor  = $themeObject.Colors.TextBoxBackColor
+				GrayLabelColor    = $themeObject.Colors.GrayLabelColor
+				UpdateButtonColor = $themeObject.Colors.UpdateButtonColor
+			}
+		}
+	}
+	catch {
+		Write-Error "Failed to import theme: $($_.Exception.Message)"
+		return $null
+	}
+}
+
+function global:Get-SandboxStartThemeFiles {
+	<#
+	.SYNOPSIS
+	Gets list of available theme files
+
+	.DESCRIPTION
+	Scans the themes directory for JSON theme files and returns their information.
+
+	.PARAMETER ThemesPath
+	Optional. Path to themes directory. Defaults to "$PSScriptRoot\..\themes"
+
+	.EXAMPLE
+	$themes = Get-SandboxStartThemeFiles
+
+	.OUTPUTS
+	Returns array of hashtables with Name, Path, and CreatedDate properties
+	#>
+	param(
+		[Parameter(Mandatory = $false)]
+		[string]$ThemesPath
+	)
+
+	try {
+		if (-not $ThemesPath) {
+			$ThemesPath = Join-Path $PSScriptRoot "..\themes"
+		}
+
+		if (-not (Test-Path $ThemesPath)) {
+			return @()
+		}
+
+		$themeFiles = Get-ChildItem -Path $ThemesPath -Filter "*.json" -File
+
+		$themes = @()
+		foreach ($file in $themeFiles) {
+			try {
+				$json = Get-Content -Path $file.FullName -Raw -Encoding UTF8
+				$themeObject = $json | ConvertFrom-Json
+
+				$themes += @{
+					Name        = if ($themeObject.ThemeName) { $themeObject.ThemeName } else { $file.BaseName }
+					Path        = $file.FullName
+					CreatedDate = if ($themeObject.CreatedDate) { $themeObject.CreatedDate } else { $file.LastWriteTime.ToString("yyyy-MM-dd") }
+				}
+			}
+			catch {
+				# Skip invalid theme files
+				Write-Warning "Skipping invalid theme file: $($file.Name)"
+			}
+		}
+
+		return $themes
+	}
+	catch {
+		Write-Warning "Failed to get theme files: $($_.Exception.Message)"
+		return @()
+	}
+}
+
 function global:Test-ColorIsDark {
 	<#
 	.SYNOPSIS

@@ -1017,6 +1017,22 @@ function global:Show-ColorPickerDialog {
 			GrayLabelColor = "120,120,120"
 			UpdateButtonColor = "0,122,204"
 		}
+		"Solarized Light" = @{
+			BackColor = "253,246,227"
+			ForeColor = "101,123,131"
+			ButtonBackColor = "238,232,213"
+			TextBoxBackColor = "253,246,227"
+			GrayLabelColor = "147,161,161"
+			UpdateButtonColor = "181,137,0"
+		}
+		"GitHub Light" = @{
+			BackColor = "255,255,255"
+			ForeColor = "36,41,46"
+			ButtonBackColor = "250,251,252"
+			TextBoxBackColor = "255,255,255"
+			GrayLabelColor = "106,115,125"
+			UpdateButtonColor = "3,102,214"
+		}
 		"GitHub Dark" = @{
 			BackColor = "13,17,23"
 			ForeColor = "230,237,243"
@@ -1049,12 +1065,36 @@ function global:Show-ColorPickerDialog {
 			GrayLabelColor = "129,161,193"
 			UpdateButtonColor = "136,192,208"
 		}
+		"Matrix Green" = @{
+			BackColor = "2,2,4"
+			ForeColor = "0,255,65"
+			ButtonBackColor = "32,72,41"
+			TextBoxBackColor = "13,2,8"
+			GrayLabelColor = "128,206,135"
+			UpdateButtonColor = "34,180,85"
+		}
+		"Hacker Terminal" = @{
+			BackColor = "34,34,34"
+			ForeColor = "183,206,66"
+			ButtonBackColor = "50,134,76"
+			TextBoxBackColor = "40,40,40"
+			GrayLabelColor = "100,149,104"
+			UpdateButtonColor = "189,224,119"
+		}
+		"Cyberpunk 2077" = @{
+			BackColor = "58,10,77"
+			ForeColor = "249,197,78"
+			ButtonBackColor = "164,45,180"
+			TextBoxBackColor = "46,8,61"
+			GrayLabelColor = "255,92,138"
+			UpdateButtonColor = "249,197,78"
+		}
 	}
 
 	# Create dialog form
 	$dialog = New-Object System.Windows.Forms.Form
 	$dialog.Text = "Custom Theme Colors"
-	$dialog.Size = New-Object System.Drawing.Size(520, 680)
+	$dialog.Size = New-Object System.Drawing.Size(520, 710)
 	$dialog.StartPosition = "CenterParent"
 	$dialog.FormBorderStyle = "FixedDialog"
 	$dialog.MaximizeBox = $false
@@ -1097,7 +1137,21 @@ function global:Show-ColorPickerDialog {
 	$presetCombo.SelectedIndex = 0
 	$dialog.Controls.Add($presetCombo)
 
-	$yPos = $yPos + 40
+	# Save Theme button (right-aligned)
+	$btnSaveTheme = New-Object System.Windows.Forms.Button
+	$btnSaveTheme.Location = New-Object System.Drawing.Point(250, ($yPos + 30))
+	$btnSaveTheme.Size = New-Object System.Drawing.Size(110, 25)
+	$btnSaveTheme.Text = "Save Theme..."
+	$dialog.Controls.Add($btnSaveTheme)
+
+	# Load Theme button (right-aligned, next to Save)
+	$btnLoadTheme = New-Object System.Windows.Forms.Button
+	$btnLoadTheme.Location = New-Object System.Drawing.Point(370, ($yPos + 30))
+	$btnLoadTheme.Size = New-Object System.Drawing.Size(110, 25)
+	$btnLoadTheme.Text = "Load Theme..."
+	$dialog.Controls.Add($btnLoadTheme)
+
+	$yPos = $yPos + 70
 
 	# Group box for color elements
 	$colorGroup = New-Object System.Windows.Forms.GroupBox
@@ -1489,6 +1543,376 @@ function global:Show-ColorPickerDialog {
 	$buttonY = $yPos + 10
 	$buttonWidth = 90
 	$buttonSpacing = 10
+
+	# Save Theme button event handler
+	$btnSaveTheme.Add_Click({
+		# Create custom themed input dialog
+		$inputDialog = New-Object System.Windows.Forms.Form
+		$inputDialog.Text = "Save Theme"
+		$inputDialog.Size = New-Object System.Drawing.Size(400, 160)
+		$inputDialog.StartPosition = "CenterParent"
+		$inputDialog.FormBorderStyle = "FixedDialog"
+		$inputDialog.MaximizeBox = $false
+		$inputDialog.MinimizeBox = $false
+
+		# Set icon (use parent dialog's icon)
+		try {
+			if ($dialog.Icon) {
+				$inputDialog.Icon = $dialog.Icon
+				$inputDialog.ShowIcon = $true
+			} else {
+				$inputDialog.ShowIcon = $false
+			}
+		} catch {
+			$inputDialog.ShowIcon = $false
+		}
+
+		# Label
+		$inputLabel = New-Object System.Windows.Forms.Label
+		$inputLabel.Location = New-Object System.Drawing.Point(10, 20)
+		$inputLabel.Size = New-Object System.Drawing.Size(360, 20)
+		$inputLabel.Text = "Enter a name for this theme:"
+		$inputDialog.Controls.Add($inputLabel)
+
+		# TextBox
+		$inputTextBox = New-Object System.Windows.Forms.TextBox
+		$inputTextBox.Location = New-Object System.Drawing.Point(10, 45)
+		$inputTextBox.Size = New-Object System.Drawing.Size(360, 20)
+		$inputTextBox.Text = "My Custom Theme"
+		$inputDialog.Controls.Add($inputTextBox)
+
+		# OK Button
+		$inputOkButton = New-Object System.Windows.Forms.Button
+		$inputOkButton.Location = New-Object System.Drawing.Point(190, 80)
+		$inputOkButton.Size = New-Object System.Drawing.Size(85, 25)
+		$inputOkButton.Text = "OK"
+		$inputOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+		$inputDialog.AcceptButton = $inputOkButton
+		$inputDialog.Controls.Add($inputOkButton)
+
+		# Cancel Button
+		$inputCancelButton = New-Object System.Windows.Forms.Button
+		$inputCancelButton.Location = New-Object System.Drawing.Point(285, 80)
+		$inputCancelButton.Size = New-Object System.Drawing.Size(85, 25)
+		$inputCancelButton.Text = "Cancel"
+		$inputCancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+		$inputDialog.CancelButton = $inputCancelButton
+		$inputDialog.Controls.Add($inputCancelButton)
+
+		# Apply current theme to input dialog
+		$currentTheme = Get-SandboxStartThemePreference
+		$useDarkTitleBar = $false
+		if ($currentTheme -eq "Dark") {
+			Set-DarkModeTheme -Control $inputDialog
+			$useDarkTitleBar = $true
+		} elseif ($currentTheme -eq "Light") {
+			Set-LightModeTheme -Control $inputDialog
+			$useDarkTitleBar = $false
+		} elseif ($currentTheme -eq "Custom") {
+			$customColors = Get-SandboxStartCustomColors
+			Set-CustomTheme -Control $inputDialog -CustomColors $customColors
+			# Detect if background is dark
+			$bgRgb = $customColors.BackColor -split ','
+			$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+			$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
+		} elseif ($currentTheme -eq "Auto") {
+			if (Test-SystemUsesLightTheme) {
+				Set-LightModeTheme -Control $inputDialog
+				$useDarkTitleBar = $false
+			} else {
+				Set-DarkModeTheme -Control $inputDialog
+				$useDarkTitleBar = $true
+			}
+		}
+
+		# Apply title bar theme
+		Set-DarkTitleBar -Form $inputDialog -UseDarkMode $useDarkTitleBar
+
+		# Show dialog and get result
+		$result = $inputDialog.ShowDialog()
+		$themeName = $inputTextBox.Text
+
+		if ($result -ne [System.Windows.Forms.DialogResult]::OK -or [string]::IsNullOrWhiteSpace($themeName)) {
+			return  # User canceled or empty name
+		}
+
+		# Check if file already exists
+		$themesDir = Join-Path $PSScriptRoot "..\themes"
+		$safeThemeName = $themeName -replace '[\\/:*?"<>|]', '_'
+		$potentialPath = Join-Path $themesDir "$safeThemeName.json"
+
+		if (Test-Path $potentialPath) {
+			# Create custom themed overwrite confirmation dialog
+			$overwriteDialog = New-Object System.Windows.Forms.Form
+			$overwriteDialog.Text = "File Exists"
+			$overwriteDialog.Size = New-Object System.Drawing.Size(450, 180)
+			$overwriteDialog.StartPosition = "CenterParent"
+			$overwriteDialog.FormBorderStyle = "FixedDialog"
+			$overwriteDialog.MaximizeBox = $false
+			$overwriteDialog.MinimizeBox = $false
+
+			# Set icon (use parent dialog's icon)
+			try {
+				if ($dialog.Icon) {
+					$overwriteDialog.Icon = $dialog.Icon
+					$overwriteDialog.ShowIcon = $true
+				} else {
+					$overwriteDialog.ShowIcon = $false
+				}
+			} catch {
+				$overwriteDialog.ShowIcon = $false
+			}
+
+			# Warning message label
+			$warningLabel = New-Object System.Windows.Forms.Label
+			$warningLabel.Location = New-Object System.Drawing.Point(10, 20)
+			$warningLabel.Size = New-Object System.Drawing.Size(420, 60)
+			$warningLabel.Text = "A theme file with this name already exists:`n$potentialPath`n`nDo you want to overwrite it?"
+			$overwriteDialog.Controls.Add($warningLabel)
+
+			# OK Button
+			$overwriteOkButton = New-Object System.Windows.Forms.Button
+			$overwriteOkButton.Location = New-Object System.Drawing.Point(240, 100)
+			$overwriteOkButton.Size = New-Object System.Drawing.Size(85, 25)
+			$overwriteOkButton.Text = "OK"
+			$overwriteOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+			$overwriteDialog.AcceptButton = $overwriteOkButton
+			$overwriteDialog.Controls.Add($overwriteOkButton)
+
+			# Cancel Button
+			$overwriteCancelButton = New-Object System.Windows.Forms.Button
+			$overwriteCancelButton.Location = New-Object System.Drawing.Point(335, 100)
+			$overwriteCancelButton.Size = New-Object System.Drawing.Size(85, 25)
+			$overwriteCancelButton.Text = "Cancel"
+			$overwriteCancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+			$overwriteDialog.CancelButton = $overwriteCancelButton
+			$overwriteDialog.Controls.Add($overwriteCancelButton)
+
+			# Apply current theme
+			$currentTheme = Get-SandboxStartThemePreference
+			$useDarkTitleBar = $false
+			if ($currentTheme -eq "Dark") {
+				Set-DarkModeTheme -Control $overwriteDialog
+				$useDarkTitleBar = $true
+			} elseif ($currentTheme -eq "Light") {
+				Set-LightModeTheme -Control $overwriteDialog
+				$useDarkTitleBar = $false
+			} elseif ($currentTheme -eq "Custom") {
+				$customColors = Get-SandboxStartCustomColors
+				Set-CustomTheme -Control $overwriteDialog -CustomColors $customColors
+				$bgRgb = $customColors.BackColor -split ','
+				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
+			} elseif ($currentTheme -eq "Auto") {
+				if (Test-SystemUsesLightTheme) {
+					Set-LightModeTheme -Control $overwriteDialog
+					$useDarkTitleBar = $false
+				} else {
+					Set-DarkModeTheme -Control $overwriteDialog
+					$useDarkTitleBar = $true
+				}
+			}
+
+			Set-DarkTitleBar -Form $overwriteDialog -UseDarkMode $useDarkTitleBar
+
+			$result = $overwriteDialog.ShowDialog()
+			if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+				return  # User chose not to overwrite
+			}
+		}
+
+		# Collect current colors from UI
+		$colorsToSave = @{
+			BackColor = $colorPickerRows["BackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ForeColor = $colorPickerRows["ForeColor"].RgbLabel.Text -replace 'RGB: ', ''
+			ButtonBackColor = $colorPickerRows["ButtonBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			TextBoxBackColor = $colorPickerRows["TextBoxBackColor"].RgbLabel.Text -replace 'RGB: ', ''
+			GrayLabelColor = $colorPickerRows["GrayLabelColor"].RgbLabel.Text -replace 'RGB: ', ''
+			UpdateButtonColor = $colorPickerRows["UpdateButtonColor"].RgbLabel.Text -replace 'RGB: ', ''
+		}
+
+		# Export theme
+		$savedPath = Export-SandboxStartTheme -Colors $colorsToSave -ThemeName $themeName
+
+		if ($savedPath) {
+			# Create custom themed success dialog
+			$successDialog = New-Object System.Windows.Forms.Form
+			$successDialog.Text = "Theme Saved"
+			$successDialog.Size = New-Object System.Drawing.Size(450, 160)
+			$successDialog.StartPosition = "CenterParent"
+			$successDialog.FormBorderStyle = "FixedDialog"
+			$successDialog.MaximizeBox = $false
+			$successDialog.MinimizeBox = $false
+
+			# Set icon
+			try {
+				if ($dialog.Icon) {
+					$successDialog.Icon = $dialog.Icon
+					$successDialog.ShowIcon = $true
+				} else {
+					$successDialog.ShowIcon = $false
+				}
+			} catch {
+				$successDialog.ShowIcon = $false
+			}
+
+			# Success message label
+			$successLabel = New-Object System.Windows.Forms.Label
+			$successLabel.Location = New-Object System.Drawing.Point(10, 20)
+			$successLabel.Size = New-Object System.Drawing.Size(420, 50)
+			$successLabel.Text = "Theme saved successfully to:`n$savedPath"
+			$successDialog.Controls.Add($successLabel)
+
+			# OK Button
+			$successOkButton = New-Object System.Windows.Forms.Button
+			$successOkButton.Location = New-Object System.Drawing.Point(335, 85)
+			$successOkButton.Size = New-Object System.Drawing.Size(85, 25)
+			$successOkButton.Text = "OK"
+			$successOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+			$successDialog.AcceptButton = $successOkButton
+			$successDialog.Controls.Add($successOkButton)
+
+			# Apply current theme
+			$currentTheme = Get-SandboxStartThemePreference
+			$useDarkTitleBar = $false
+			if ($currentTheme -eq "Dark") {
+				Set-DarkModeTheme -Control $successDialog
+				$useDarkTitleBar = $true
+			} elseif ($currentTheme -eq "Light") {
+				Set-LightModeTheme -Control $successDialog
+				$useDarkTitleBar = $false
+			} elseif ($currentTheme -eq "Custom") {
+				$customColors = Get-SandboxStartCustomColors
+				Set-CustomTheme -Control $successDialog -CustomColors $customColors
+				$bgRgb = $customColors.BackColor -split ','
+				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
+			} elseif ($currentTheme -eq "Auto") {
+				if (Test-SystemUsesLightTheme) {
+					Set-LightModeTheme -Control $successDialog
+					$useDarkTitleBar = $false
+				} else {
+					Set-DarkModeTheme -Control $successDialog
+					$useDarkTitleBar = $true
+				}
+			}
+
+			Set-DarkTitleBar -Form $successDialog -UseDarkMode $useDarkTitleBar
+
+			$successDialog.ShowDialog() | Out-Null
+		} else {
+			# Create custom themed error dialog
+			$errorDialog = New-Object System.Windows.Forms.Form
+			$errorDialog.Text = "Save Error"
+			$errorDialog.Size = New-Object System.Drawing.Size(450, 160)
+			$errorDialog.StartPosition = "CenterParent"
+			$errorDialog.FormBorderStyle = "FixedDialog"
+			$errorDialog.MaximizeBox = $false
+			$errorDialog.MinimizeBox = $false
+
+			# Set icon
+			try {
+				if ($dialog.Icon) {
+					$errorDialog.Icon = $dialog.Icon
+					$errorDialog.ShowIcon = $true
+				} else {
+					$errorDialog.ShowIcon = $false
+				}
+			} catch {
+				$errorDialog.ShowIcon = $false
+			}
+
+			# Error message label
+			$errorLabel = New-Object System.Windows.Forms.Label
+			$errorLabel.Location = New-Object System.Drawing.Point(10, 20)
+			$errorLabel.Size = New-Object System.Drawing.Size(420, 50)
+			$errorLabel.Text = "Failed to save theme. Check error messages for details."
+			$errorDialog.Controls.Add($errorLabel)
+
+			# OK Button
+			$errorOkButton = New-Object System.Windows.Forms.Button
+			$errorOkButton.Location = New-Object System.Drawing.Point(335, 85)
+			$errorOkButton.Size = New-Object System.Drawing.Size(85, 25)
+			$errorOkButton.Text = "OK"
+			$errorOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+			$errorDialog.AcceptButton = $errorOkButton
+			$errorDialog.Controls.Add($errorOkButton)
+
+			# Apply current theme
+			$currentTheme = Get-SandboxStartThemePreference
+			$useDarkTitleBar = $false
+			if ($currentTheme -eq "Dark") {
+				Set-DarkModeTheme -Control $errorDialog
+				$useDarkTitleBar = $true
+			} elseif ($currentTheme -eq "Light") {
+				Set-LightModeTheme -Control $errorDialog
+				$useDarkTitleBar = $false
+			} elseif ($currentTheme -eq "Custom") {
+				$customColors = Get-SandboxStartCustomColors
+				Set-CustomTheme -Control $errorDialog -CustomColors $customColors
+				$bgRgb = $customColors.BackColor -split ','
+				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
+			} elseif ($currentTheme -eq "Auto") {
+				if (Test-SystemUsesLightTheme) {
+					Set-LightModeTheme -Control $errorDialog
+					$useDarkTitleBar = $false
+				} else {
+					Set-DarkModeTheme -Control $errorDialog
+					$useDarkTitleBar = $true
+				}
+			}
+
+			Set-DarkTitleBar -Form $errorDialog -UseDarkMode $useDarkTitleBar
+
+			$errorDialog.ShowDialog() | Out-Null
+		}
+	}.GetNewClosure())
+
+	# Load Theme button event handler
+	$btnLoadTheme.Add_Click({
+		# Create OpenFileDialog
+		$openDialog = New-Object System.Windows.Forms.OpenFileDialog
+		$openDialog.Title = "Load Theme"
+		$openDialog.Filter = "JSON Theme Files (*.json)|*.json|All Files (*.*)|*.*"
+
+		# Set initial directory to themes folder
+		$themesDir = Join-Path $PSScriptRoot "..\themes"
+		if (Test-Path $themesDir) {
+			$openDialog.InitialDirectory = $themesDir
+		}
+
+		if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+			# Import theme
+			$importedTheme = Import-SandboxStartTheme -FilePath $openDialog.FileName
+
+			if ($importedTheme -and $importedTheme.Colors) {
+				# Update all color pickers with loaded values
+				foreach ($key in $importedTheme.Colors.Keys) {
+					if ($colorPickerRows.ContainsKey($key)) {
+						$rgb = $importedTheme.Colors[$key] -split ','
+						$color = [System.Drawing.Color]::FromArgb([int]$rgb[0], [int]$rgb[1], [int]$rgb[2])
+
+						$colorPickerRows[$key].Panel.BackColor = $color
+						$colorPickerRows[$key].RgbLabel.Text = "RGB: $($importedTheme.Colors[$key])"
+					}
+				}
+
+				# Update preview
+				Update-ColorPreview -ColorValues $importedTheme.Colors
+
+				# Reset preset combo to "Current Colors"
+				$presetCombo.SelectedIndex = 0
+			} else {
+				[System.Windows.Forms.MessageBox]::Show(
+					"Failed to load theme. The file may be invalid or corrupted.",
+					"Load Error",
+					[System.Windows.Forms.MessageBoxButtons]::OK,
+					[System.Windows.Forms.MessageBoxIcon]::Error
+				)
+			}
+		}
+	}.GetNewClosure())
 
 	# Reset button
 	$resetButton = New-Object System.Windows.Forms.Button
