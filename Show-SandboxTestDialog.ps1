@@ -558,8 +558,8 @@ function global:Set-DarkModeTheme {
 
 	# Recursively apply to child controls
 	foreach ($child in $Control.Controls) {
-		# Skip color picker swatch panels (they need to keep their custom colors)
-		if ($child.Tag -eq "ColorPickerSwatch") {
+		# Skip color picker swatch panels and preview panel (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch" -or $child.Tag -eq "ColorPreviewPanel") {
 			continue
 		}
 		Set-DarkModeTheme -Control $child -UpdateButtonBackColor $UpdateButtonBackColor
@@ -638,8 +638,8 @@ function global:Set-LightModeTheme {
 
 	# Recursively apply to child controls
 	foreach ($child in $Control.Controls) {
-		# Skip color picker swatch panels (they need to keep their custom colors)
-		if ($child.Tag -eq "ColorPickerSwatch") {
+		# Skip color picker swatch panels and preview panel (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch" -or $child.Tag -eq "ColorPreviewPanel") {
 			continue
 		}
 		Set-LightModeTheme -Control $child -UpdateButtonBackColor $UpdateButtonBackColor
@@ -798,8 +798,8 @@ function global:Set-CustomTheme {
 
 	# Recursively apply to child controls
 	foreach ($child in $Control.Controls) {
-		# Skip color picker swatch panels (they need to keep their custom colors)
-		if ($child.Tag -eq "ColorPickerSwatch") {
+		# Skip color picker swatch panels and preview panel (they need to keep their custom colors)
+		if ($child.Tag -eq "ColorPickerSwatch" -or $child.Tag -eq "ColorPreviewPanel") {
 			continue
 		}
 		Set-CustomTheme -Control $child -CustomColors $CustomColors -UpdateButtonBackColor $UpdateButtonBackColor
@@ -1334,6 +1334,7 @@ function global:Show-ColorPickerDialog {
 	$previewPanel.Location = New-Object System.Drawing.Point(10, 20)
 	$previewPanel.Size = New-Object System.Drawing.Size(440, 200)
 	$previewPanel.BorderStyle = "Fixed3D"
+	$previewPanel.Tag = "ColorPreviewPanel"  # Mark to skip recursive theme application
 	$previewGroup.Controls.Add($previewPanel)
 
 	# Preview label
@@ -1350,20 +1351,20 @@ function global:Show-ColorPickerDialog {
 	$previewGrayLabel.Text = "Disabled/gray label"
 	$previewPanel.Controls.Add($previewGrayLabel)
 
-	# Preview button
-	$previewButton = New-Object System.Windows.Forms.Button
-	$previewButton.Location = New-Object System.Drawing.Point(10, 70)
-	$previewButton.Size = New-Object System.Drawing.Size(120, 30)
-	$previewButton.Text = "Sample Button"
-	$previewButton.FlatStyle = "Flat"
-	$previewPanel.Controls.Add($previewButton)
+	# Preview sample button (in preview panel)
+	$previewSampleButton = New-Object System.Windows.Forms.Button
+	$previewSampleButton.Location = New-Object System.Drawing.Point(10, 70)
+	$previewSampleButton.Size = New-Object System.Drawing.Size(120, 30)
+	$previewSampleButton.Text = "Sample Button"
+	$previewSampleButton.FlatStyle = "Standard"  # Use standard 3D style that respects BackColor
+	$previewPanel.Controls.Add($previewSampleButton)
 
-	# Preview accent button
+	# Preview accent button (in preview panel)
 	$previewAccentButton = New-Object System.Windows.Forms.Button
 	$previewAccentButton.Location = New-Object System.Drawing.Point(140, 70)
 	$previewAccentButton.Size = New-Object System.Drawing.Size(140, 30)
 	$previewAccentButton.Text = "Accent Button"
-	$previewAccentButton.FlatStyle = "Flat"
+	$previewAccentButton.FlatStyle = "Standard"  # Use standard 3D style that respects BackColor
 	$previewPanel.Controls.Add($previewAccentButton)
 
 	# Preview textbox
@@ -1405,13 +1406,14 @@ function global:Show-ColorPickerDialog {
 		$previewLabel.ForeColor = $foreColor
 		$previewGrayLabel.ForeColor = $grayColor
 
-		$previewButton.BackColor = $buttonBackColor
-		$previewButton.ForeColor = $foreColor
-		$previewButton.FlatAppearance.BorderColor = $foreColor
+		# Set button colors (FlatStyle = Standard respects BackColor)
+		$previewSampleButton.BackColor = $buttonBackColor
+		$previewSampleButton.ForeColor = $foreColor
+		$previewSampleButton.Refresh()
 
 		$previewAccentButton.BackColor = $accentColor
 		$previewAccentButton.ForeColor = $foreColor
-		$previewAccentButton.FlatAppearance.BorderColor = $foreColor
+		$previewAccentButton.Refresh()
 
 		$previewTextBox.BackColor = $textBoxBackColor
 		$previewTextBox.ForeColor = $foreColor
@@ -1631,6 +1633,12 @@ function global:Show-ColorPickerDialog {
 		$updateRgb = $customColors.UpdateButtonColor -split ','
 		$themeUpdateColor = [System.Drawing.Color]::FromArgb([int]$updateRgb[0], [int]$updateRgb[1], [int]$updateRgb[2])
 		Set-CustomTheme -Control $dialog -CustomColors $customColors -UpdateButtonBackColor $themeUpdateColor
+
+		# Set title bar color based on background brightness
+		$bgRgb = $customColors.BackColor -split ','
+		$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+		$isDark = Test-ColorIsDark -Color $bgColor
+		Set-DarkTitleBar -Form $dialog -UseDarkMode $isDark
 	} else {
 		Set-ThemeToForm -Form $dialog -UpdateButtonColor $UpdateButtonColor
 	}
