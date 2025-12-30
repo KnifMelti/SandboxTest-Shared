@@ -2271,7 +2271,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Create the main form
 		$form = New-Object System.Windows.Forms.Form
 		$form.Text = "Windows Sandbox Test Configuration"
-		$form.Size = New-Object System.Drawing.Size(450, 725)
+		$form.Size = New-Object System.Drawing.Size(465, 740)
 		$form.StartPosition = "CenterScreen"
 		$form.FormBorderStyle = "FixedDialog"
 		$form.MaximizeBox = $false
@@ -2309,7 +2309,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$controlHeight = 23
 		$spacing = 5
 		$leftMargin = 20
-		$controlWidth = 400
+		$controlWidth = 409
 
 		# Update button in top-right corner
 		$btnUpdate = New-Object System.Windows.Forms.Button
@@ -3320,6 +3320,69 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Set default accept/cancel buttons
 		$form.AcceptButton = $btnOK
 		$form.CancelButton = $btnCancel
+
+		# Enable AutoScroll for high DPI scaling scenarios (issue #4)
+		# Must be done in Form.Load event when ClientSize is finalized
+		$finalY = $y  # Capture final Y position before Form.Load
+		$form.Add_Load({
+			# Calculate actual content height
+			$contentHeight = $finalY + 50  # Button Y + button height + margin
+			$clientHeight = $this.ClientSize.Height
+
+			# Get screen working area (excludes taskbar)
+			$workingArea = [System.Windows.Forms.Screen]::FromControl($this).WorkingArea
+			$screenHeight = $workingArea.Height
+			$screenTop = $workingArea.Top
+
+			# Calculate if form exceeds screen working area
+			$formTop = $this.Top
+			$formBottom = $formTop + $this.Height
+			$formExceedsScreen = $formBottom -gt $screenHeight
+
+			# If form exceeds screen working area, resize it and enable scrolling
+			if ($formExceedsScreen) {
+				# Calculate maximum form height that fits in working area (with small margin)
+				$maxFormHeight = $screenHeight - 20  # 20px margin from taskbar
+
+				# Resize form to fit screen
+				$this.Height = $maxFormHeight
+
+				# Reposition to top of working area
+				$this.Top = $screenTop + 10  # 10px margin from top
+
+				# Enable scrolling since we had to shrink the form
+				$this.AutoScroll = $true
+				# Set AutoScrollMinSize - subtract scrollbar width from client width to prevent horizontal scrollbar
+				$scrollBarWidth = [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth
+				$this.AutoScrollMinSize = New-Object System.Drawing.Size(($this.ClientSize.Width - $scrollBarWidth - 5), $contentHeight)
+				# Explicitly disable horizontal scrolling
+				$this.HorizontalScroll.Enabled = $false
+				$this.HorizontalScroll.Visible = $false
+				$this.HorizontalScroll.Maximum = 0
+			}
+			# Enable scrolling if content exceeds client height (even if form fits on screen)
+			elseif ($contentHeight -gt $clientHeight) {
+				$this.AutoScroll = $true
+				# Set AutoScrollMinSize - subtract scrollbar width from client width to prevent horizontal scrollbar
+				$scrollBarWidth = [System.Windows.Forms.SystemInformation]::VerticalScrollBarWidth
+				$this.AutoScrollMinSize = New-Object System.Drawing.Size(($this.ClientSize.Width - $scrollBarWidth - 5), $contentHeight)
+				# Explicitly disable horizontal scrolling
+				$this.HorizontalScroll.Enabled = $false
+				$this.HorizontalScroll.Visible = $false
+				$this.HorizontalScroll.Maximum = 0
+			}
+		})
+
+		# Add Shown event to force hide horizontal scrollbar after form is fully rendered
+		$form.Add_Shown({
+			if ($this.AutoScroll) {
+				# Force hide horizontal scrollbar after form is shown
+				$this.HorizontalScroll.Enabled = $false
+				$this.HorizontalScroll.Visible = $false
+				$this.HorizontalScroll.Maximum = 0
+				$this.PerformLayout()  # Force layout refresh
+			}
+		})
 
 		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
 		Set-ThemeToForm -Form $form -UpdateButtonColor $updateButtonGreen
