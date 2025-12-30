@@ -683,21 +683,34 @@ namespace DarkMode {
 "@ -ErrorAction SilentlyContinue
 	}
 
-	# Capture parameter value for use in scriptblock
-	$darkMode = $UseDarkMode
-
-	# Apply dark title bar via Shown event (window handle must be created first)
-	$Form.Add_Shown({
+	# Apply title bar theme immediately if form is already created, otherwise use Shown event
+	if ($Form.Handle -ne [IntPtr]::Zero) {
+		# Form already has a window handle - apply immediately
 		try {
 			# DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-			$titleBarMode = if ($darkMode) { 1 } else { 0 }
-			[DarkMode.DwmApi]::DwmSetWindowAttribute($this.Handle, 20, [ref]$titleBarMode, 4) | Out-Null
+			$titleBarMode = if ($UseDarkMode) { 1 } else { 0 }
+			[DarkMode.DwmApi]::DwmSetWindowAttribute($Form.Handle, 20, [ref]$titleBarMode, 4) | Out-Null
 		}
 		catch {
 			# Silent fail - not critical if title bar theming doesn't work
 			Write-Verbose "Failed to set title bar theme: $($_.Exception.Message)"
 		}
-	}.GetNewClosure())
+	}
+	else {
+		# Form not yet shown - use Shown event to apply when window handle is created
+		$darkMode = $UseDarkMode
+		$Form.Add_Shown({
+			try {
+				# DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+				$titleBarMode = if ($darkMode) { 1 } else { 0 }
+				[DarkMode.DwmApi]::DwmSetWindowAttribute($this.Handle, 20, [ref]$titleBarMode, 4) | Out-Null
+			}
+			catch {
+				# Silent fail - not critical if title bar theming doesn't work
+				Write-Verbose "Failed to set title bar theme: $($_.Exception.Message)"
+			}
+		}.GetNewClosure())
+	}
 }
 
 # Global theme toggle handler - must be in script scope to be accessible from event handlers
@@ -925,7 +938,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$form.StartPosition = "CenterScreen"
 		$form.FormBorderStyle = "FixedDialog"
 		$form.MaximizeBox = $false
-		$form.MinimizeBox = $false
+		$form.MinimizeBox = $true
 
 		# Set custom icon if available
 		if ($appIcon) {
