@@ -1137,6 +1137,9 @@ function global:Show-ColorPickerDialog {
 	$presetCombo.SelectedIndex = 0
 	$dialog.Controls.Add($presetCombo)
 
+	# Define themes directory for Save/Load Theme buttons
+	$themesDir = Join-Path $Script:WorkingDir "themes"
+
 	# Save Theme button (right-aligned)
 	$btnSaveTheme = New-Object System.Windows.Forms.Button
 	$btnSaveTheme.Location = New-Object System.Drawing.Point(250, ($yPos + 30))
@@ -1637,7 +1640,6 @@ function global:Show-ColorPickerDialog {
 		}
 
 		# Check if file already exists
-		$themesDir = Join-Path $PSScriptRoot "..\themes"
 		$safeThemeName = $themeName -replace '[\\/:*?"<>|]', '_'
 		$potentialPath = Join-Path $themesDir "$safeThemeName.json"
 
@@ -1877,7 +1879,6 @@ function global:Show-ColorPickerDialog {
 		$openDialog.Filter = "JSON Theme Files (*.json)|*.json|All Files (*.*)|*.*"
 
 		# Set initial directory to themes folder
-		$themesDir = Join-Path $PSScriptRoot "..\themes"
 		if (Test-Path $themesDir) {
 			$openDialog.InitialDirectory = $themesDir
 		}
