@@ -8,6 +8,7 @@ function SandboxTest {
         [string] $InstallPackageList = "",
         [switch] $Prerelease,
         [switch] $Clean,
+        [switch] $SkipWinGetInstallation,
         [switch] $Async,
         [ValidateSet("Enable", "Disable")]
         [string] $Networking = "Enable",
@@ -372,7 +373,7 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 
         # Get the details for the version of WinGet that was requested
         # Skip WinGet preparation if networking is disabled
-        if ($Networking -eq "Enable") {
+        if (($Networking -eq "Enable") -and -not $SkipWinGetInstallation) {
             Write-Verbose "Fetching release details from $script:ReleasesApiUrl; Filters: {Prerelease=$script:Prerelease; Version~=$script:WinGetVersion}"
             $script:WinGetReleaseDetails = Get-Release
         if (!$script:WinGetReleaseDetails) {
@@ -510,7 +511,7 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
         if (!(Initialize-Folder $script:DependenciesCacheFolder)) { throw 'Could not create folder for caching dependencies' }
 
         # Copy WinGet assets only if networking is enabled
-        if ($Networking -eq "Enable") {
+        if (($Networking -eq "Enable") -and -not $SkipWinGetInstallation) {
             Write-Verbose "Copying assets into $script:TestDataFolder"
             $script:SandboxWinGetSettings | ConvertTo-Json | Out-File -FilePath (Join-Path -Path $script:TestDataFolder -ChildPath 'settings.json') -Encoding ascii
             foreach ($dependency in $script:AppInstallerDependencies) {
@@ -655,6 +656,7 @@ $notepadPPConfig | Out-File -FilePath (Join-Path $notepadPPConfigFolder "config.
         $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_APPS_LIGHT_THEME', $script:HostAppsUseLightTheme
         $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_SYSTEM_LIGHT_THEME', $script:HostSystemUsesLightTheme
         $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_NETWORKING', $Networking
+        $sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_SKIP_WINGET', $SkipWinGetInstallation.ToString()
 
         if ($Script) {
             Write-Verbose "Creating script file from 'Script' argument with initialization code"
@@ -810,7 +812,7 @@ function Update-EnvironmentVariables {
 Push-Location $($script:SandboxTestDataFolder)
 
 # WinGet Installation (conditional on networking)
-if ("$Networking" -eq "Enable") {
+if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
     Write-Host '================================================' -ForegroundColor Cyan
     Write-Host '--> Installing WinGet $($script:AppInstallerReleaseTag)' -ForegroundColor Yellow
     Write-Host '================================================' -ForegroundColor Cyan
@@ -873,7 +875,7 @@ New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associa
 New-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations' -Name 'ModRiskFileTypes' -Type 'String' -Value '.bat;.exe;.reg;.vbs;.chm;.msi;.js;.cmd' -Force | Out-Null
 
 # WinGet configuration (only if networking is enabled)
-if ("$Networking" -eq "Enable") {
+if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
     Write-Host '    [2/2] Applying WinGet settings...' -ForegroundColor Cyan
     # Apply settings.json first so subsequent CLI toggles persist and are not overwritten
     Get-ChildItem -Filter 'settings.json' | Copy-Item -Destination C:\Users\WDAGUtilityAccount\AppData\Local\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json -ErrorAction SilentlyContinue
@@ -889,7 +891,7 @@ Write-Host '    Configuration completed!' -ForegroundColor Green
 # Package Installation (optional SandboxStart feature - requires networking)
 `$packageListFile = Get-ChildItem -Filter 'packages.txt' -ErrorAction SilentlyContinue
 if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
-    if ("$Networking" -eq "Enable") {
+    if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
         Write-Host ''
         Write-Host '================================================' -ForegroundColor Cyan
         Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
@@ -1038,7 +1040,7 @@ $mappedFolders
 $mappedDirsInfo
 "@
 
-        if ($Networking -eq "Enable") {
+        if (($Networking -eq "Enable") -and -not $SkipWinGetInstallation) {
             $infoMessage += @"
 
     - Installing WinGet

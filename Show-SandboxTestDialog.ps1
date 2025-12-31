@@ -1878,10 +1878,11 @@ function global:Show-ColorPickerDialog {
 		$openDialog.Title = "Load Theme"
 		$openDialog.Filter = "JSON Theme Files (*.json)|*.json|All Files (*.*)|*.*"
 
-		# Set initial directory to themes folder
-		if (Test-Path $themesDir) {
-			$openDialog.InitialDirectory = $themesDir
+		# Set initial directory to themes folder (create if doesn't exist)
+		if (-not (Test-Path $themesDir)) {
+			New-Item -ItemType Directory -Path $themesDir -Force | Out-Null
 		}
+		$openDialog.InitialDirectory = $themesDir
 
 		if ($openDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 			# Import theme
@@ -2272,7 +2273,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Create the main form
 		$form = New-Object System.Windows.Forms.Form
 		$form.Text = "Windows Sandbox Test Configuration"
-		$form.Size = New-Object System.Drawing.Size(465, 740)
+		$form.Size = New-Object System.Drawing.Size(465, 770)
 		$form.StartPosition = "CenterScreen"
 		$form.FormBorderStyle = "FixedDialog"
 		$form.MaximizeBox = $false
@@ -2775,6 +2776,45 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$chkVerbose.Size = New-Object System.Drawing.Size(300, $labelHeight)
 		$chkVerbose.Text = "Verbose (screen log && wait)"
 		$form.Controls.Add($chkVerbose)
+		$y += $labelHeight + 5
+
+
+		# Skip WinGet Installation checkbox
+		$chkSkipWinGet = New-Object System.Windows.Forms.CheckBox
+		$chkSkipWinGet.Location = New-Object System.Drawing.Point($leftMargin, $y)
+		$chkSkipWinGet.Size = New-Object System.Drawing.Size($controlWidth, $controlHeight)
+		$chkSkipWinGet.Text = "Skip WinGet installation (network only mode)"
+		$chkSkipWinGet.Checked = $false
+		$chkSkipWinGet.Enabled = $true  # Enabled by default since Networking is checked by default
+		$tooltipSkipWinGet = New-Object System.Windows.Forms.ToolTip
+		$tooltipSkipWinGet.SetToolTip($chkSkipWinGet, "Enable networking without installing WinGet. Useful for quick browser tests or manual downloads. Pre-install shortcuts and settings still apply.")
+		$form.Controls.Add($chkSkipWinGet)
+
+	# Add event handler for Skip WinGet checkbox
+	$chkSkipWinGet.Add_CheckedChanged({
+		$networkingEnabled = $chkNetworking.Checked
+		$skipWinGet = $this.Checked
+
+		# Only process if networking is enabled
+		if ($networkingEnabled) {
+			$winGetFeaturesEnabled = -not $skipWinGet
+
+			# Control WinGet-related UI elements
+			$cmbInstallPackages.Enabled = $winGetFeaturesEnabled
+			$btnEditPackages.Enabled = $winGetFeaturesEnabled -and ($cmbInstallPackages.SelectedIndex -gt 0)
+			$cmbWinGetVersion.Enabled = $winGetFeaturesEnabled -and -not $chkPrerelease.Checked
+			$chkPrerelease.Enabled = $winGetFeaturesEnabled
+			$chkClean.Enabled = $winGetFeaturesEnabled
+
+			# Clear selections when enabling skip mode
+			if ($skipWinGet) {
+				$cmbInstallPackages.SelectedIndex = 0
+				$cmbWinGetVersion.SelectedIndex = 0
+				$chkPrerelease.Checked = $false
+				$chkClean.Checked = $false
+			}
+		}
+	})
 
 		$y += $labelHeight + $spacing + 10
 
@@ -2799,29 +2839,43 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 		# Add event handler to enable/disable WinGet-related controls based on networking
 		$chkNetworking.Add_CheckedChanged({
-			$enabled = $this.Checked
+		$networkingEnabled = $this.Checked
+		$skipWinGet = $chkSkipWinGet.Checked
 
-			# Enable/disable all WinGet-related controls
-			$cmbInstallPackages.Enabled = $enabled
-			# Edit button requires both networking enabled AND a valid package list selected
-			$selectedItem = $cmbInstallPackages.SelectedItem
-			$btnEditPackages.Enabled = $enabled -and ($selectedItem -ne "" -and $selectedItem -ne "[Create new list...]")
-			$cmbWinGetVersion.Enabled = $enabled -and -not $chkPrerelease.Checked
-			$chkPrerelease.Enabled = $enabled
-			$chkClean.Enabled = $enabled
+		# Enable/disable "Skip WinGet" checkbox based on networking state
+		$chkSkipWinGet.Enabled = $networkingEnabled
 
-			# Clear selections when disabling
-			if (-not $enabled) {
-				$cmbInstallPackages.SelectedIndex = 0  # Select empty option
-				$cmbWinGetVersion.SelectedIndex = 0    # Select empty option
-				$chkPrerelease.Checked = $false
-				$chkClean.Checked = $false
-			}
+		# When networking is disabled, uncheck "Skip WinGet"
+		if (-not $networkingEnabled) {
+			$chkSkipWinGet.Checked = $false
+		}
+
+		# Determine if WinGet features should be enabled
+		# They're only enabled when networking is ON and skip is OFF
+		$winGetFeaturesEnabled = $networkingEnabled -and -not $skipWinGet
+
+		# Control WinGet-related UI elements
+		$cmbInstallPackages.Enabled = $winGetFeaturesEnabled
+		# Edit button requires both networking enabled AND a valid package list selected
+		$selectedItem = $cmbInstallPackages.SelectedItem
+		$btnEditPackages.Enabled = $winGetFeaturesEnabled -and ($selectedItem -ne "" -and $selectedItem -ne "[Create new list...]")
+		$cmbWinGetVersion.Enabled = $winGetFeaturesEnabled -and -not $chkPrerelease.Checked
+		$chkPrerelease.Enabled = $winGetFeaturesEnabled
+		$chkClean.Enabled = $winGetFeaturesEnabled
+
+		# Clear selections when disabling
+		if (-not $networkingEnabled) {
+			$cmbInstallPackages.SelectedIndex = 0  # Select empty option
+			$cmbWinGetVersion.SelectedIndex = 0    # Select empty option
+			$chkPrerelease.Checked = $false
+			$chkClean.Checked = $false
+		}
 		})
 
 		$form.Controls.Add($chkNetworking)
 
 		$y += $labelHeight + 5
+
 
 		# Memory dropdown - First detect available system RAM
 		# Get total physical memory and calculate safe maximum (75% of total RAM)
@@ -3300,6 +3354,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				Verbose = $chkVerbose.Checked
 				Wait = $chkVerbose.Checked
 				Networking = if ($chkNetworking.Checked) { "Enable" } else { "Disable" }
+			SkipWinGetInstallation = $chkSkipWinGet.Checked
 				MemoryInMB = [int]$cmbMemory.SelectedItem
 				vGPU = $cmbvGPU.SelectedItem
 				Script = $resultScript
@@ -3444,6 +3499,9 @@ if ($dialogResult.Verbose) { $sandboxParams.Verbose = $true }
 # Add WSB configuration parameters
 if (![string]::IsNullOrWhiteSpace($dialogResult.Networking)) {
 	$sandboxParams.Networking = $dialogResult.Networking
+}
+if ($dialogResult.SkipWinGetInstallation) {
+	$sandboxParams.SkipWinGetInstallation = $dialogResult.SkipWinGetInstallation
 }
 if ($dialogResult.MemoryInMB) {
 	$sandboxParams.MemoryInMB = $dialogResult.MemoryInMB
