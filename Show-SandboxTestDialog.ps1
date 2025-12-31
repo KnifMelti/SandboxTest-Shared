@@ -1983,9 +1983,9 @@ function global:Show-ColorPickerDialog {
 	}.GetNewClosure())
 	$dialog.Controls.Add($previewButton)
 
-	# OK button
+	# OK button (aligned with preview box, second from right)
 	$okButton = New-Object System.Windows.Forms.Button
-	$okX = 480 - $buttonWidth - $buttonSpacing - $buttonWidth - $buttonSpacing
+	$okX = 20 + 460 - (2 * $buttonWidth) - $buttonSpacing
 	$okButton.Location = New-Object System.Drawing.Point($okX, $buttonY)
 	$okButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
 	$okButton.Text = "OK"
@@ -2019,9 +2019,9 @@ function global:Show-ColorPickerDialog {
 	}.GetNewClosure())
 	$dialog.Controls.Add($okButton)
 
-	# Cancel button (restore original theme)
+	# Cancel button (restore original theme) (aligned with preview box right edge)
 	$cancelButton = New-Object System.Windows.Forms.Button
-	$cancelX = 480 - $buttonWidth - $buttonSpacing
+	$cancelX = 20 + 460 - $buttonWidth
 	$cancelButton.Location = New-Object System.Drawing.Point($cancelX, $buttonY)
 	$cancelButton.Size = New-Object System.Drawing.Size($buttonWidth, 30)
 	$cancelButton.Text = "Cancel"
