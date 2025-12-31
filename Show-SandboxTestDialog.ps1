@@ -191,7 +191,7 @@ function Show-PackageListEditor {
 	}
 	$editorForm.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size(420, 370) }
-		"ScriptMapping" { New-Object System.Drawing.Size(600, 500) }
+		"ScriptMapping" { New-Object System.Drawing.Size(510, 505) }
 	}
 	$editorForm.StartPosition = "CenterParent"
 	$editorForm.FormBorderStyle = "FixedDialog"
@@ -218,7 +218,7 @@ function Show-PackageListEditor {
 	$margin = 15
 	$controlWidth = switch ($EditorMode) {
 		"PackageList" { 380 }
-		"ScriptMapping" { 560 }
+		"ScriptMapping" { 470 }
 	}
 
 	# List name field - only for PackageList mode
@@ -1094,7 +1094,7 @@ function global:Show-ColorPickerDialog {
 	# Create dialog form
 	$dialog = New-Object System.Windows.Forms.Form
 	$dialog.Text = "Custom Theme Colors"
-	$dialog.Size = New-Object System.Drawing.Size(520, 710)
+	$dialog.Size = New-Object System.Drawing.Size(520, 670)
 	$dialog.StartPosition = "CenterParent"
 	$dialog.FormBorderStyle = "FixedDialog"
 	$dialog.MaximizeBox = $false
