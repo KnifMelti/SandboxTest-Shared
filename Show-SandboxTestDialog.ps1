@@ -294,7 +294,7 @@ function Show-PackageListEditor {
 		"PackageList" { "Example: Notepad++.Notepad++`nUse WinGet package IDs from winget search`nComments: Lines starting with # are ignored" }
 		"ScriptMapping" { @"
 Format: FilePattern = ScriptToExecute.ps1
-Example: InstallWSB.cmd = InstallWSB.ps1
+Example: InstallWSB.cmd = Std-WAU.ps1
 Patterns are matched against folder/file names (case-insensitive).
 Wildcards: * (any characters), ? (single character)
 Comments: Lines starting with # are ignored.
