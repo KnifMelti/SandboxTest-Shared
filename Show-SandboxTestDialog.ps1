@@ -2369,7 +2369,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Folder browse button
 		$btnBrowse = New-Object System.Windows.Forms.Button
 		$btnBrowse.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$btnBrowse.Size = New-Object System.Drawing.Size(($controlWidth / 2 - 5), $controlHeight)
+		$btnBrowse.Size = New-Object System.Drawing.Size(($controlWidth * 0.44), $controlHeight)
 		$btnBrowse.Text = "Folder..."
 		$btnBrowse.Add_Click({
 			# Use OpenFileDialog as folder picker for dark mode support
@@ -2455,11 +2455,30 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			}
 		})
 		$form.Controls.Add($btnBrowse)
-		
-		# File browse button
+
+		# Read-Only checkbox in middle (small, with label below)
+		$chkMapFolderReadOnly = New-Object System.Windows.Forms.CheckBox
+		$chkMapFolderReadOnly.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth * 0.44 + 10), ($y + 2))
+		$chkMapFolderReadOnly.Size = New-Object System.Drawing.Size(15, 15)
+		$chkMapFolderReadOnly.Text = ""
+		$chkMapFolderReadOnly.Checked = $false
+		$tooltipReadOnly = New-Object System.Windows.Forms.ToolTip
+		$tooltipReadOnly.SetToolTip($chkMapFolderReadOnly, "Map the folder as read-only in the sandbox. Prevents any modifications to source files.")
+		$form.Controls.Add($chkMapFolderReadOnly)
+
+		# R/O label below checkbox
+		$lblReadOnly = New-Object System.Windows.Forms.Label
+		$lblReadOnly.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth * 0.44 + 4), ($y + 17))
+		$lblReadOnly.Size = New-Object System.Drawing.Size(25, 15)
+		$lblReadOnly.Text = "R/O"
+		$lblReadOnly.Font = New-Object System.Drawing.Font("Segoe UI", 7)
+		$lblReadOnly.TextAlign = [System.Drawing.ContentAlignment]::TopCenter
+		$form.Controls.Add($lblReadOnly)
+
+		# File browse button (aligned to right edge of control width)
 		$btnBrowseFile = New-Object System.Windows.Forms.Button
-		$btnBrowseFile.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth / 2 + 5), $y)
-		$btnBrowseFile.Size = New-Object System.Drawing.Size(($controlWidth / 2 - 5), $controlHeight)
+		$btnBrowseFile.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth * 0.44 + 35), $y)
+		$btnBrowseFile.Size = New-Object System.Drawing.Size(($controlWidth - ($controlWidth * 0.44) - 35), $controlHeight)
 		$btnBrowseFile.Text = "File..."
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -3480,6 +3499,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				Wait = $chkVerbose.Checked
 				Networking = if ($chkNetworking.Checked) { "Enable" } else { "Disable" }
 			SkipWinGetInstallation = $chkSkipWinGet.Checked
+			MapFolderReadOnly = $chkMapFolderReadOnly.Checked
 				MemoryInMB = [int]$cmbMemory.SelectedItem
 				vGPU = $cmbvGPU.SelectedItem
 				Script = $resultScript
@@ -3633,6 +3653,9 @@ if ($dialogResult.MemoryInMB) {
 }
 if (![string]::IsNullOrWhiteSpace($dialogResult.vGPU)) {
 	$sandboxParams.vGPU = $dialogResult.vGPU
+}
+if ($dialogResult.MapFolderReadOnly) {
+	$sandboxParams.MapFolderReadOnly = $dialogResult.MapFolderReadOnly
 }
 
 # Call SandboxTest with collected parameters
