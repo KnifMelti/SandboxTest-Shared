@@ -1110,6 +1110,53 @@ function global:Test-ColorIsDark {
 	return $brightness -lt 128
 }
 
+function global:Test-PathContainsNonAsciiCharacters {
+	<#
+	.SYNOPSIS
+	Tests if a path string contains non-ASCII characters
+
+	.DESCRIPTION
+	Windows Sandbox has limitations processing paths with non-ASCII characters.
+	This function checks if any character in the path exceeds the ASCII range (0-127).
+	This commonly affects OneDrive folders when Windows is using a non-English language
+	(e.g., "Dokument" instead of "Documents").
+
+	.PARAMETER Path
+	The path string to validate
+
+	.OUTPUTS
+	Boolean - $true if path contains non-ASCII characters, $false otherwise
+
+	.EXAMPLE
+	Test-PathContainsNonAsciiCharacters -Path "C:\Users\OneDrive\Folder"
+	Returns: $false
+
+	.EXAMPLE
+	Test-PathContainsNonAsciiCharacters -Path "C:\Users\OneDrive\Mäp"
+	Returns: $true
+
+	.NOTES
+	Related to Issue #8 - Swedish characters in mapping path
+	#>
+	param (
+		[Parameter(Mandatory = $true)]
+		[AllowEmptyString()]
+		[string] $Path
+	)
+
+	if ([string]::IsNullOrWhiteSpace($Path)) {
+		return $false
+	}
+
+	foreach ($char in $Path.ToCharArray()) {
+		if ([int]$char -gt 127) {
+			return $true
+		}
+	}
+
+	return $false
+}
+
 #endregion
 
 # Note: Functions are available via dot-sourcing (. script.ps1)
