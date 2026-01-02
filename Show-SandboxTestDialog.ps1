@@ -2099,73 +2099,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 "@
 
 	try {
-		# Function to download and update all .ps1 scripts from a GitHub folder
-		function Update-ScriptsFromGitHub {
-			param(
-				[Parameter(Mandatory)]
-				[string]$GitHubRepo,  # Format: 'owner/repo'
-
-				[Parameter(Mandatory)]
-				[string]$GitHubFolder,  # Format: 'path/to/folder'
-
-				[Parameter(Mandatory)]
-				[string]$LocalFolder,
-
-				[string]$Branch = 'master'
-			)
-
-			# Ensure local folder exists
-			if (!(Test-Path $LocalFolder)) {
-				New-Item -Path $LocalFolder -ItemType Directory -Force | Out-Null
-			}
-
-			try {
-				# Suppress progress bar
-				$oldProgressPreference = $ProgressPreference
-				$ProgressPreference = 'SilentlyContinue'
-
-				# Get folder contents from GitHub API using helper with caching
-				$ps1Files = Get-GitHubFolderContents `
-					-Owner ($GitHubRepo -split '/')[0] `
-					-Repo ($GitHubRepo -split '/')[1] `
-					-Path $GitHubFolder `
-					-Branch $Branch `
-					-FilePattern "*.ps1" `
-					-UseCache
-
-				foreach ($file in $ps1Files) {
-					$localPath = Join-Path $LocalFolder $file.name
-
-					# Download from raw URL
-					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
-
-					# Normalize remote content to CRLF for Windows
-					$remoteContentNormalized = $remoteContent -replace "`r`n", "`n"  # First normalize to LF
-					$remoteContentNormalized = $remoteContentNormalized -replace "`n", "`r`n"  # Then convert to CRLF
-
-					if (Test-Path $localPath) {
-						$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
-
-						# Compare normalized content
-						if ($remoteContentNormalized -eq $localContent) {
-							continue
-						}
-					}
-
-					# Save with CRLF line endings
-					$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
-				}
-
-				# Restore progress preference
-				$ProgressPreference = $oldProgressPreference
-
-			} catch {
-				# Restore progress preference on error
-				if ($oldProgressPreference) { $ProgressPreference = $oldProgressPreference }
-				# Silent fail - fallback to local files
-			}
-		}
-
 		# Function to check if current script is a default script
 		function Test-IsDefaultScript {
 			param([string]$FilePath)
@@ -2208,7 +2141,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		# Download/update default scripts from GitHub
 		Write-Host "Checking default scripts...`t" -NoNewline -ForegroundColor Cyan
 		$initialStatus = "Checking default scripts from GitHub"
-		Update-ScriptsFromGitHub -GitHubRepo 'KnifMelti/SandboxStart' -GitHubFolder 'Source/assets/scripts' -LocalFolder $wsbDir
+		Sync-GitHubScriptsSelective -LocalFolder $wsbDir -UseCache
 		Write-Host "Done" -ForegroundColor Green
 		$initialStatus = "Default scripts ready"
 

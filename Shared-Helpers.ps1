@@ -1157,6 +1157,190 @@ function global:Test-PathContainsNonAsciiCharacters {
 	return $false
 }
 
+function Sync-GitHubScriptsSelective {
+	<#
+	.SYNOPSIS
+	Selectively syncs files from GitHub to local folder based on pattern matching
+
+	.DESCRIPTION
+	Downloads files from a GitHub repository folder with selective behavior:
+	- Files matching AlwaysSyncPatterns: Always updated if content differs
+	- Other files: Downloaded only if missing locally (preserves local modifications)
+
+	Uses GitHub API with caching to minimize rate limit impact.
+	Normalizes line endings to CRLF and uses ASCII encoding for text files.
+
+	.PARAMETER LocalFolder
+	Local directory to sync files to (required)
+
+	.PARAMETER Owner
+	GitHub repository owner (default: 'KnifMelti')
+
+	.PARAMETER Repo
+	GitHub repository name (default: 'SandboxStart')
+
+	.PARAMETER GitHubPath
+	Path within repository (default: 'Source/assets/scripts')
+
+	.PARAMETER Branch
+	Branch to sync from (default: 'master')
+
+	.PARAMETER AlwaysSyncPatterns
+	Array of wildcard patterns for files that should always be updated.
+	Default: @('Std-*.ps1')
+
+	.PARAMETER UseCache
+	Use cached GitHub API responses (60-minute TTL)
+
+	.EXAMPLE
+	Sync-GitHubScriptsSelective -LocalFolder "C:\wsb" -UseCache
+
+	Syncs files from GitHub to C:\wsb, always updating Std-*.ps1 files
+
+	.EXAMPLE
+	Sync-GitHubScriptsSelective -LocalFolder "C:\wsb" -AlwaysSyncPatterns @('Std-*.ps1', 'Template-*.txt') -Verbose
+
+	Syncs with custom patterns and verbose logging
+
+	.NOTES
+	Silent failure on GitHub API errors (graceful degradation to local files)
+	#>
+	param(
+		[Parameter(Mandatory=$true)]
+		[string]$LocalFolder,
+
+		[string]$Owner = 'KnifMelti',
+
+		[string]$Repo = 'SandboxStart',
+
+		[string]$GitHubPath = 'Source/assets/scripts',
+
+		[string]$Branch = 'master',
+
+		[string[]]$AlwaysSyncPatterns = @('Std-*.ps1'),
+
+		[switch]$UseCache
+	)
+
+	# Ensure local folder exists
+	if (!(Test-Path $LocalFolder)) {
+		New-Item -Path $LocalFolder -ItemType Directory -Force | Out-Null
+	}
+
+	try {
+		# Suppress progress bar
+		$oldProgressPreference = $ProgressPreference
+		$ProgressPreference = 'SilentlyContinue'
+
+		# Get folder contents from GitHub API (all files, no filter)
+		Write-Verbose "Syncing from GitHub: $Owner/$Repo/$GitHubPath"
+		$files = Get-GitHubFolderContents `
+			-Owner $Owner `
+			-Repo $Repo `
+			-Path $GitHubPath `
+			-Branch $Branch `
+			-UseCache:$UseCache
+
+		if (!$files -or $files.Count -eq 0) {
+			Write-Verbose "No files returned from GitHub (using cached/local files)"
+			$ProgressPreference = $oldProgressPreference
+			return
+		}
+
+		Write-Verbose "Found $($files.Count) files on GitHub"
+
+		# Track statistics
+		$downloadedCount = 0
+		$updatedCount = 0
+		$skippedCount = 0
+		$unchangedCount = 0
+
+		foreach ($file in $files | Where-Object { $_.type -eq 'file' }) {
+			try {
+				# Check if file matches AlwaysSyncPatterns
+				$isAlwaysSync = $false
+				foreach ($pattern in $AlwaysSyncPatterns) {
+					if ($file.name -like $pattern) {
+						$isAlwaysSync = $true
+						break
+					}
+				}
+
+				$localPath = Join-Path $LocalFolder $file.name
+
+				if ($isAlwaysSync) {
+					# Always-sync files: Download and compare, overwrite if different
+					# Download from raw URL
+					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
+
+					# Normalize remote content to CRLF for Windows
+					$remoteContentNormalized = $remoteContent -replace "`r`n", "`n"  # First normalize to LF
+					$remoteContentNormalized = $remoteContentNormalized -replace "`n", "`r`n"  # Then convert to CRLF
+
+					if (Test-Path $localPath) {
+						$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
+
+						# Compare normalized content
+						if ($remoteContentNormalized -eq $localContent) {
+							Write-Verbose "Unchanged: $($file.name) (already up to date)"
+							$unchangedCount++
+							continue
+						}
+						else {
+							Write-Verbose "Updated: $($file.name) (content changed)"
+							$updatedCount++
+						}
+					}
+					else {
+						Write-Verbose "Downloaded: $($file.name) (new file)"
+						$downloadedCount++
+					}
+
+					# Save with CRLF line endings
+					$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+				}
+				else {
+					# Other files: Only download if missing locally
+					if (-not (Test-Path $localPath)) {
+						# Download from raw URL
+						$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
+
+						# Normalize remote content to CRLF for Windows
+						$remoteContentNormalized = $remoteContent -replace "`r`n", "`n"
+						$remoteContentNormalized = $remoteContentNormalized -replace "`n", "`r`n"
+
+						# Save with CRLF line endings
+						$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+
+						Write-Verbose "Downloaded: $($file.name) (new file)"
+						$downloadedCount++
+					}
+					else {
+						Write-Verbose "Skipped: $($file.name) (preserving local file)"
+						$skippedCount++
+					}
+				}
+			}
+			catch {
+				Write-Verbose "Failed to sync $($file.name): $_"
+				continue
+			}
+		}
+
+		# Summary
+		Write-Verbose "Sync complete: $downloadedCount downloaded, $updatedCount updated, $unchangedCount unchanged, $skippedCount skipped"
+
+		# Restore progress preference
+		$ProgressPreference = $oldProgressPreference
+
+	} catch {
+		# Restore progress preference on error
+		if ($oldProgressPreference) { $ProgressPreference = $oldProgressPreference }
+		Write-Verbose "GitHub sync failed: $_"
+		# Silent fail - fallback to local files
+	}
+}
+
 #endregion
 
 # Note: Functions are available via dot-sourcing (. script.ps1)
