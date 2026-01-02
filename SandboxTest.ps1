@@ -9,6 +9,7 @@ function SandboxTest {
         [switch] $Prerelease,
         [switch] $Clean,
         [switch] $SkipWinGetInstallation,
+        [switch] $MapFolderReadOnly,
         [switch] $Async,
         [ValidateSet("Enable", "Disable")]
         [string] $Networking = "Enable",
@@ -113,7 +114,7 @@ function SandboxTest {
     $script:AppInstallerDataFolder = Join-Path -Path (Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Packages') -ChildPath $script:AppInstallerPFN
     $script:DependenciesCacheFolder = Join-Path -Path $script:AppInstallerDataFolder -ChildPath "$script:ScriptName.Dependencies"
     $script:TestDataFolder = Join-Path -Path $script:AppInstallerDataFolder -ChildPath $script:ScriptName
-    $script:PrimaryMappedFolder = if ($MapFolder) { (Resolve-Path -Path $MapFolder).Path } else { $null }
+    $script:PrimaryMappedFolder = if ($MapFolder) { [System.IO.Path]::GetFullPath($MapFolder) } else { $null }
     # Validate optional SandboxFolderName
     if ($SandboxFolderName) {
         $SandboxFolderName = $SandboxFolderName.Trim()
@@ -1001,12 +1002,13 @@ Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 "@
 
                 if ($script:PrimaryMappedFolder) {
+                        $readOnlyValue = if ($MapFolderReadOnly) { "true" } else { "false" }
                         $mappedFolders += @"
 
         <MappedFolder>
             <HostFolder>$($script:PrimaryMappedFolder)</HostFolder>
             <SandboxFolder>$($script:SandboxWorkingDirectory)</SandboxFolder>
-            <ReadOnly>false</ReadOnly>
+            <ReadOnly>$readOnlyValue</ReadOnly>
         </MappedFolder>
 "@
                 }
@@ -1028,7 +1030,8 @@ $mappedFolders
 
         $mappedDirsInfo = "      - $($script:TestDataFolder) as read-and-write"
         if ($script:PrimaryMappedFolder) {
-            $mappedDirsInfo += "`n      - $($script:PrimaryMappedFolder) as read-and-write"
+            $accessMode = if ($MapFolderReadOnly) { "read-only" } else { "read-and-write" }
+            $mappedDirsInfo += "`n      - $($script:PrimaryMappedFolder) as $accessMode"
         }
 
         $additionalCommands = ""
