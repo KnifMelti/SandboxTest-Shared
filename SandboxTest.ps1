@@ -90,6 +90,10 @@ function SandboxTest {
     $script:DependencySource = [DependencySources]::InRelease
     $script:UsePowerShellModuleForInstall = $false
 
+    # Set console output encoding to UTF-8 for international characters
+    $script:PreviousOutputEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
     # Bind function parameters to script-scoped variables used later
     $script:Prerelease     = [bool]$Prerelease
     $script:WinGetVersion  = $WinGetVersion
@@ -190,6 +194,12 @@ function SandboxTest {
             [Parameter(Mandatory = $true)]
             [int] $ExitCode
         )
+
+        # Restore previous console output encoding
+        if ($script:PreviousOutputEncoding) {
+            [Console]::OutputEncoding = $script:PreviousOutputEncoding
+        }
+
         Invoke-FileCleanup -FilePaths $script:CleanupPaths
         $script:HttpClient.Dispose()
         Write-Debug "Exiting ($ExitCode)"
