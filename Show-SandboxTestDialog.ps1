@@ -34,7 +34,7 @@ InstallWSB.cmd = Std-WAU.ps1
 *.installer.yaml = Std-Manifest.ps1
 *.* = Std-Install.ps1
 "@
-		Set-Content -Path $mappingFile -Value $defaultContent -Encoding ASCII
+		Set-Content -Path $mappingFile -Value $defaultContent -Encoding UTF8
 	}
 
 	# Read and parse mapping file
@@ -67,7 +67,7 @@ InstallWSB.cmd = Std-WAU.ps1
 
 		# Save migrated mappings back to file
 		if ($migrated) {
-			Set-Content -Path $mappingFile -Value ($updatedLines -join "`r`n") -Encoding ASCII
+			Set-Content -Path $mappingFile -Value ($updatedLines -join "`r`n") -Encoding UTF8
 
 			# Delete old script files from wsb directory
 			$wsbDir = Split-Path $mappingFile -Parent
@@ -161,38 +161,6 @@ function Get-PackageListTooltip {
 		return "No package lists found. Click '[Create new list...]' to create one."
 	}
 	return "Select a package list to install via WinGet"
-}
-
-function Remove-InternationalCharacters {
-	<#
-	.SYNOPSIS
-	Removes international (non-ASCII) characters from a string
-
-	.DESCRIPTION
-	Strips out any characters that are not:
-	- Letters (A-Z, a-z)
-	- Numbers (0-9)
-	- Underscore (_)
-	- Hyphen (-)
-	- Space
-
-	This ensures folder names are compatible with Windows Sandbox folder mapping.
-
-	.PARAMETER InputString
-	The string to sanitize
-
-	.OUTPUTS
-	String with only ASCII alphanumeric characters, underscore, hyphen, and space
-	#>
-	param([string]$InputString)
-
-	# Keep only ASCII alphanumeric, underscore, hyphen, and space (ASCII 32)
-	$sanitized = $InputString -replace '[^A-Za-z0-9_\- ]', ''
-
-	# Trim whitespace and collapse multiple spaces to single space
-	$sanitized = $sanitized.Trim() -replace '  +', ' '
-
-	return $sanitized
 }
 
 function Show-PackageListEditor {
@@ -388,7 +356,7 @@ Comments: Lines starting with # are ignored.
 		# Save the file
 		try {
 			$packageContent = $txtPackages.Text.Trim()
-			Set-Content -Path $listPath -Value $packageContent -Encoding ASCII
+			Set-Content -Path $listPath -Value $packageContent -Encoding UTF8
 
 			$script:__editorReturn = @{
 				DialogResult = 'OK'
@@ -2363,8 +2331,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					$txtSandboxFolderName.Text = "WAU-install"
 				} else {
 					$folderName = Split-Path $selectedDir -Leaf
-					# Sanitize folder name to remove international characters
-					$folderName = Remove-InternationalCharacters $folderName
 					# Check if it's a root drive (contains : or is a path like D:\)
 					if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
 						$txtSandboxFolderName.Text = $folderName
@@ -2463,8 +2429,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				
 				# Update sandbox folder name based on directory only (no WAU detection)
 				$folderName = Split-Path $selectedDir -Leaf
-				# Sanitize folder name to remove international characters
-				$folderName = Remove-InternationalCharacters $folderName
 				# Check if it's a root drive (contains : or is a path like D:\)
 				if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
 					$txtSandboxFolderName.Text = $folderName
@@ -2560,8 +2524,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$txtSandboxFolderName.Text = "WAU-install"
 		} else {
 			$initialFolderName = Split-Path $txtMapFolder.Text -Leaf
-			# Sanitize folder name to remove international characters
-			$initialFolderName = Remove-InternationalCharacters $initialFolderName
 			# Check if it's a root drive (contains : or is a path like D:\)
 			if (![string]::IsNullOrWhiteSpace($initialFolderName) -and $initialFolderName -notmatch ':' -and $initialFolderName -ne '\') {
 				$txtSandboxFolderName.Text = $initialFolderName
@@ -2583,17 +2545,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			if (![string]::IsNullOrWhiteSpace($currentScript)) {
 				# Replace the SandboxFolderName variable value in the existing script
 				$txtScript.Text = $currentScript -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`""
-			}
-		})
-
-		# Add LostFocus event handler to sanitize text when user leaves the field
-		$txtSandboxFolderName.Add_LostFocus({
-			$originalText = $txtSandboxFolderName.Text
-			$sanitizedText = Remove-InternationalCharacters $originalText
-
-			# Only update if text changed
-			if ($originalText -ne $sanitizedText) {
-				$txtSandboxFolderName.Text = $sanitizedText
 			}
 		})
 
@@ -3329,7 +3280,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			# If we have a current file, save directly
 			if ($script:currentScriptFile -and (Test-Path (Split-Path $script:currentScriptFile -Parent))) {
 				try {
-					$txtScript.Text | Out-File -FilePath $script:currentScriptFile -Encoding ASCII
+					$txtScript.Text | Out-File -FilePath $script:currentScriptFile -Encoding UTF8
 					[System.Windows.Forms.MessageBox]::Show("Script saved successfully to:`n$($script:currentScriptFile)", "Save Complete", "OK", "Information")
 				}
 				catch {
@@ -3357,7 +3308,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 						if (-not (Test-Path $wsbDir)) {
 							New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 						}
-						$txtScript.Text | Out-File -FilePath $targetPath -Encoding ASCII
+						$txtScript.Text | Out-File -FilePath $targetPath -Encoding UTF8
 
 						# Update current file tracking
 						$script:currentScriptFile = $targetPath
@@ -3431,7 +3382,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					if (-not (Test-Path $wsbDir)) {
 						New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 					}
-					$txtScript.Text | Out-File -FilePath $targetPath -Encoding ASCII
+					$txtScript.Text | Out-File -FilePath $targetPath -Encoding UTF8
 
 					# Update current file tracking
 					$script:currentScriptFile = $targetPath
