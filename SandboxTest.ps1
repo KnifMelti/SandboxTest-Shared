@@ -674,6 +674,15 @@ $notepadPPConfig | Out-File -FilePath (Join-Path $notepadPPConfigFolder "config.
 
             # Detect if script contains InstallWSB.cmd
             $scriptText = $Script.ToString()
+
+            # Remove BOM if present (prevents BOM appearing mid-file after concatenation)
+            $scriptText = $scriptText.TrimStart([char]0xFEFF)
+
+            # Replace $SandboxFolderName placeholder value only (not the variable name itself)
+            # Pattern matches: $SandboxFolderName = "AnyValue"
+            # Replaces with: $SandboxFolderName = "ActualFolderName"
+            $scriptText = $scriptText -replace '(\$SandboxFolderName\s*=\s*")[^"]*(")', "`$1$sandboxLeaf`$2"
+
             $containsWAUInstall = $scriptText -match 'InstallWSB\.cmd'
 
             if ($containsWAUInstall) {
