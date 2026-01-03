@@ -3411,41 +3411,6 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$btnOK.Size = New-Object System.Drawing.Size(75, 30)
 		$btnOK.Text = "OK"
 		$btnOK.Add_Click({
-			# Validate MapFolder for non-ASCII characters (Issue #8)
-			if (-not [string]::IsNullOrWhiteSpace($txtMapFolder.Text)) {
-				if (Test-PathContainsNonAsciiCharacters -Path $txtMapFolder.Text) {
-					# Extract non-ASCII characters
-					$nonAsciiChars = [System.Collections.ArrayList]@()
-					foreach ($char in $txtMapFolder.Text.ToCharArray()) {
-						if ([int]$char -gt 127 -and $nonAsciiChars -notcontains $char) {
-							[void]$nonAsciiChars.Add($char)
-						}
-					}
-					$charList = ($nonAsciiChars -join ", ")
-
-					[System.Windows.Forms.MessageBox]::Show(
-						"The selected folder path contains non-ASCII characters that Windows Sandbox cannot process.`n`nPath: $($txtMapFolder.Text)`nProblematic characters: $charList`n`nThis commonly occurs with OneDrive folders when Windows is using a non-English language.`n`nPlease select a folder path containing only English characters (A-Z, 0-9, standard symbols).",
-						"Invalid Path Characters",
-						[System.Windows.Forms.MessageBoxButtons]::OK,
-						[System.Windows.Forms.MessageBoxIcon]::Warning
-					)
-					return  # Prevent dialog from closing
-				}
-			}
-
-			# Validate SandboxFolderName for non-ASCII characters (Issue #8)
-			if (-not [string]::IsNullOrWhiteSpace($txtSandboxFolderName.Text)) {
-				if (Test-PathContainsNonAsciiCharacters -Path $txtSandboxFolderName.Text) {
-					[System.Windows.Forms.MessageBox]::Show(
-						"The sandbox folder name contains non-ASCII characters. Please use only English characters (A-Z, 0-9, standard symbols).",
-						"Invalid Folder Name",
-						[System.Windows.Forms.MessageBoxButtons]::OK,
-						[System.Windows.Forms.MessageBoxIcon]::Warning
-					)
-					return
-				}
-			}
-
 			$resultScript = $null
 			if (-not [string]::IsNullOrWhiteSpace($txtScript.Text)) {
 				try { $resultScript = [ScriptBlock]::Create($txtScript.Text) } catch { $resultScript = $null }

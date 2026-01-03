@@ -115,33 +115,12 @@ function SandboxTest {
     $script:DependenciesCacheFolder = Join-Path -Path $script:AppInstallerDataFolder -ChildPath "$script:ScriptName.Dependencies"
     $script:TestDataFolder = Join-Path -Path $script:AppInstallerDataFolder -ChildPath $script:ScriptName
     $script:PrimaryMappedFolder = if ($MapFolder) { [System.IO.Path]::GetFullPath($MapFolder) } else { $null }
-
-    # Validate MapFolder for non-ASCII characters (Issue #8)
-    if ($script:PrimaryMappedFolder) {
-        if (Test-PathContainsNonAsciiCharacters -Path $script:PrimaryMappedFolder) {
-            # Extract non-ASCII characters for error message
-            $nonAsciiChars = [System.Collections.ArrayList]@()
-            foreach ($char in $script:PrimaryMappedFolder.ToCharArray()) {
-                if ([int]$char -gt 127 -and $nonAsciiChars -notcontains $char) {
-                    [void]$nonAsciiChars.Add($char)
-                }
-            }
-            $charList = ($nonAsciiChars -join ", ")
-
-            throw "The folder path contains non-ASCII characters that Windows Sandbox cannot process.`n`nPath: $($script:PrimaryMappedFolder)`nProblematic characters: $charList`n`nThis commonly occurs with OneDrive folders when Windows is using a non-English language.`n`nPlease select a folder path containing only English characters (A-Z, 0-9, standard symbols)."
-        }
-    }
-
     # Validate optional SandboxFolderName
     if ($SandboxFolderName) {
         $SandboxFolderName = $SandboxFolderName.Trim()
         $invalidNameChars = [System.IO.Path]::GetInvalidFileNameChars()
         if ($SandboxFolderName.IndexOfAny($invalidNameChars) -ge 0) {
             throw "SandboxFolderName contains invalid characters."
-        }
-        # Also check for non-ASCII characters (Issue #8)
-        if (Test-PathContainsNonAsciiCharacters -Path $SandboxFolderName) {
-            throw "SandboxFolderName contains non-ASCII characters. Please use only English characters (A-Z, 0-9, standard symbols)."
         }
     }
 
@@ -1046,7 +1025,7 @@ $mappedFolders
   <Command>PowerShell Start-Process PowerShell -WindowStyle Maximized -WorkingDirectory '$($script:SandboxWorkingDirectory)' -ArgumentList '-ExecutionPolicy Bypass -File $($script:SandboxBootstrapFile)'</Command>
   </LogonCommand>
 </Configuration>
-"@ | Out-File -FilePath $script:ConfigurationFile -Encoding ASCII -Force
+"@ | Out-File -FilePath $script:ConfigurationFile -Encoding UTF8 -Force
     Write-Verbose "WSB configuration written to: $script:ConfigurationFile"
 
         $mappedDirsInfo = "      - $($script:TestDataFolder) as read-and-write"
