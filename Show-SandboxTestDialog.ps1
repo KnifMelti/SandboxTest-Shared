@@ -163,6 +163,38 @@ function Get-PackageListTooltip {
 	return "Select a package list to install via WinGet"
 }
 
+function Remove-InternationalCharacters {
+	<#
+	.SYNOPSIS
+	Removes international (non-ASCII) characters from a string
+
+	.DESCRIPTION
+	Strips out any characters that are not:
+	- Letters (A-Z, a-z)
+	- Numbers (0-9)
+	- Underscore (_)
+	- Hyphen (-)
+	- Space
+
+	This ensures folder names are compatible with Windows Sandbox folder mapping.
+
+	.PARAMETER InputString
+	The string to sanitize
+
+	.OUTPUTS
+	String with only ASCII alphanumeric characters, underscore, hyphen, and space
+	#>
+	param([string]$InputString)
+
+	# Keep only ASCII alphanumeric, underscore, hyphen, and space (ASCII 32)
+	$sanitized = $InputString -replace '[^A-Za-z0-9_\- ]', ''
+
+	# Trim whitespace and collapse multiple spaces to single space
+	$sanitized = $sanitized.Trim() -replace '  +', ' '
+
+	return $sanitized
+}
+
 function Show-PackageListEditor {
 	<#
 	.SYNOPSIS
@@ -2331,6 +2363,8 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					$txtSandboxFolderName.Text = "WAU-install"
 				} else {
 					$folderName = Split-Path $selectedDir -Leaf
+					# Sanitize folder name to remove international characters
+					$folderName = Remove-InternationalCharacters $folderName
 					# Check if it's a root drive (contains : or is a path like D:\)
 					if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
 						$txtSandboxFolderName.Text = $folderName
@@ -2429,6 +2463,8 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				
 				# Update sandbox folder name based on directory only (no WAU detection)
 				$folderName = Split-Path $selectedDir -Leaf
+				# Sanitize folder name to remove international characters
+				$folderName = Remove-InternationalCharacters $folderName
 				# Check if it's a root drive (contains : or is a path like D:\)
 				if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
 					$txtSandboxFolderName.Text = $folderName
@@ -2524,6 +2560,8 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$txtSandboxFolderName.Text = "WAU-install"
 		} else {
 			$initialFolderName = Split-Path $txtMapFolder.Text -Leaf
+			# Sanitize folder name to remove international characters
+			$initialFolderName = Remove-InternationalCharacters $initialFolderName
 			# Check if it's a root drive (contains : or is a path like D:\)
 			if (![string]::IsNullOrWhiteSpace($initialFolderName) -and $initialFolderName -notmatch ':' -and $initialFolderName -ne '\') {
 				$txtSandboxFolderName.Text = $initialFolderName
@@ -2540,10 +2578,22 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 		# Add event handler to update script when folder name changes
 		$txtSandboxFolderName.Add_TextChanged({
+			# Update script content
 			$currentScript = $txtScript.Text
 			if (![string]::IsNullOrWhiteSpace($currentScript)) {
 				# Replace the SandboxFolderName variable value in the existing script
 				$txtScript.Text = $currentScript -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`""
+			}
+		})
+
+		# Add LostFocus event handler to sanitize text when user leaves the field
+		$txtSandboxFolderName.Add_LostFocus({
+			$originalText = $txtSandboxFolderName.Text
+			$sanitizedText = Remove-InternationalCharacters $originalText
+
+			# Only update if text changed
+			if ($originalText -ne $sanitizedText) {
+				$txtSandboxFolderName.Text = $sanitizedText
 			}
 		})
 
