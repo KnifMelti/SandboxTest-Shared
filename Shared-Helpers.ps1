@@ -1250,7 +1250,7 @@ function Sync-GitHubScriptsSelective {
 					}
 
 					# Save with CRLF line endings
-					$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+					$remoteContentNormalized | Set-Content -Path $localPath -Encoding UTF8 -NoNewline -Force
 				}
 				else {
 					# Other files: Only download if missing locally
@@ -1263,7 +1263,7 @@ function Sync-GitHubScriptsSelective {
 						$remoteContentNormalized = $remoteContentNormalized -replace "`n", "`r`n"
 
 						# Save with CRLF line endings
-						$remoteContentNormalized | Set-Content -Path $localPath -Encoding ASCII -NoNewline -Force
+						$remoteContentNormalized | Set-Content -Path $localPath -Encoding UTF8 -NoNewline -Force
 
 						Write-Verbose "Downloaded: $($file.name) (new file)"
 						$downloadedCount++

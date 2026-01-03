@@ -782,12 +782,12 @@ if ($installLocation) {
             }
 
             # Write combined script to BoundParameterScript.ps1
-            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding ASCII
+            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding UTF8
         } else {
             # Create BoundParameterScript with ONLY pre-install initialization (no user script)
             # This prevents old user scripts from persisting when script editor is cleared
             $fullScript = "# Pre-Install Initialization`r`n" + $sandboxPreInstallScript
-            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding ASCII
+            $fullScript | Out-File -FilePath (Join-Path $script:TestDataFolder -ChildPath 'BoundParameterScript.ps1') -Encoding UTF8
         }
 
         # Copy Std-File.ps1 to sandbox (needed when File... button is used)
@@ -990,7 +990,7 @@ if (Test-Path `$stdFilePath) {
 
 Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
-"@ | Out-File -FilePath $(Join-Path -Path $script:TestDataFolder -ChildPath "$script:ScriptName.ps1") -Encoding ASCII -Force
+"@ | Out-File -FilePath $(Join-Path -Path $script:TestDataFolder -ChildPath "$script:ScriptName.ps1") -Encoding UTF8 -Force
 
                 Write-Verbose 'Creating WSB file for launching the sandbox'
                 $mappedFolders = @"
