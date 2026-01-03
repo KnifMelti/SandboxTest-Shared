@@ -436,6 +436,302 @@ function Find-MatchingScript {
 	}
 }
 
+# Helper function to apply theme to a dialog form
+function global:Set-ThemedDialog {
+	<#
+	.SYNOPSIS
+	Applies current theme settings to a dialog form
+
+	.DESCRIPTION
+	Internal helper function that applies the currently selected theme
+	(Auto/Light/Dark/Custom) to a dialog form, including icon, colors,
+	and title bar styling.
+
+	.PARAMETER Dialog
+	The Windows Forms dialog to apply theme to
+
+	.PARAMETER ParentIcon
+	Optional parent form icon to inherit
+	#>
+	param(
+		[System.Windows.Forms.Form]$Dialog,
+		[System.Drawing.Icon]$ParentIcon = $null
+	)
+
+	# Set icon
+	if ($ParentIcon) {
+		try {
+			$Dialog.Icon = $ParentIcon
+			$Dialog.ShowIcon = $true
+		} catch {
+			$Dialog.ShowIcon = $false
+		}
+	} else {
+		$Dialog.ShowIcon = $false
+	}
+
+	# Get current theme and apply
+	$currentTheme = Get-SandboxStartThemePreference
+	$useDarkTitleBar = $false
+
+	if ($currentTheme -eq "Dark") {
+		Set-DarkModeTheme -Control $Dialog
+		$useDarkTitleBar = $true
+	} elseif ($currentTheme -eq "Light") {
+		Set-LightModeTheme -Control $Dialog
+		$useDarkTitleBar = $false
+	} elseif ($currentTheme -eq "Custom") {
+		$customColors = Get-SandboxStartCustomColors
+		Set-CustomTheme -Control $Dialog -CustomColors $customColors
+		$bgRgb = $customColors.BackColor -split ','
+		$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
+		$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
+	} elseif ($currentTheme -eq "Auto") {
+		if (Test-SystemUsesLightTheme) {
+			Set-LightModeTheme -Control $Dialog
+			$useDarkTitleBar = $false
+		} else {
+			Set-DarkModeTheme -Control $Dialog
+			$useDarkTitleBar = $true
+		}
+	}
+
+	# Apply title bar theme
+	Set-DarkTitleBar -Form $Dialog -UseDarkMode $useDarkTitleBar
+}
+
+# Helper function to show themed input dialog
+function global:Show-ThemedInputDialog {
+	<#
+	.SYNOPSIS
+	Displays a themed input dialog for text entry
+
+	.DESCRIPTION
+	Shows a custom dialog with theming applied that prompts the user
+	for text input. Supports all theme types (Auto/Light/Dark/Custom)
+	and provides OK/Cancel buttons.
+
+	.PARAMETER Title
+	The dialog window title
+
+	.PARAMETER Prompt
+	The prompt text displayed above the input field
+
+	.PARAMETER DefaultValue
+	Optional default value pre-populated in the textbox
+
+	.PARAMETER ParentIcon
+	Optional parent form icon to inherit
+
+	.RETURNS
+	String containing user input, or $null if canceled
+	#>
+	param(
+		[string]$Title = "Input",
+		[string]$Prompt = "Enter value:",
+		[string]$DefaultValue = "",
+		[System.Drawing.Icon]$ParentIcon = $null
+	)
+
+	# Create dialog
+	$inputDialog = New-Object System.Windows.Forms.Form
+	$inputDialog.Text = $Title
+	$inputDialog.Size = New-Object System.Drawing.Size(400, 160)
+	$inputDialog.StartPosition = "CenterParent"
+	$inputDialog.FormBorderStyle = "FixedDialog"
+	$inputDialog.MaximizeBox = $false
+	$inputDialog.MinimizeBox = $false
+
+	# Label
+	$inputLabel = New-Object System.Windows.Forms.Label
+	$inputLabel.Location = New-Object System.Drawing.Point(10, 20)
+	$inputLabel.Size = New-Object System.Drawing.Size(360, 20)
+	$inputLabel.Text = $Prompt
+	$inputDialog.Controls.Add($inputLabel)
+
+	# TextBox
+	$inputTextBox = New-Object System.Windows.Forms.TextBox
+	$inputTextBox.Location = New-Object System.Drawing.Point(10, 45)
+	$inputTextBox.Size = New-Object System.Drawing.Size(360, 20)
+	$inputTextBox.Text = $DefaultValue
+	$inputDialog.Controls.Add($inputTextBox)
+
+	# OK Button
+	$inputOkButton = New-Object System.Windows.Forms.Button
+	$inputOkButton.Location = New-Object System.Drawing.Point(190, 80)
+	$inputOkButton.Size = New-Object System.Drawing.Size(85, 25)
+	$inputOkButton.Text = "OK"
+	$inputOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+	$inputDialog.AcceptButton = $inputOkButton
+	$inputDialog.Controls.Add($inputOkButton)
+
+	# Cancel Button
+	$inputCancelButton = New-Object System.Windows.Forms.Button
+	$inputCancelButton.Location = New-Object System.Drawing.Point(285, 80)
+	$inputCancelButton.Size = New-Object System.Drawing.Size(85, 25)
+	$inputCancelButton.Text = "Cancel"
+	$inputCancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+	$inputDialog.CancelButton = $inputCancelButton
+	$inputDialog.Controls.Add($inputCancelButton)
+
+	# Apply theme
+	Set-ThemedDialog -Dialog $inputDialog -ParentIcon $ParentIcon | Out-Null
+
+	# Show dialog and capture result
+	$result = $inputDialog.ShowDialog()
+
+	# Capture text value before disposing
+	$returnValue = $null
+	if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+		$text = $inputTextBox.Text
+		if (-not [string]::IsNullOrWhiteSpace($text)) {
+			$returnValue = [string]$text
+		}
+	}
+
+	# Dispose dialog
+	$inputDialog.Dispose() | Out-Null
+
+	# Return text value or null
+	Write-Output $returnValue
+}
+
+# Helper function to show themed message dialog
+function global:Show-ThemedMessageDialog {
+	<#
+	.SYNOPSIS
+	Displays a themed message dialog
+
+	.DESCRIPTION
+	Shows a custom message dialog with theming applied. Supports various
+	button configurations (OK, OKCancel, YesNo, YesNoCancel) and icon
+	types (Information, Warning, Error, Question).
+
+	.PARAMETER Title
+	The dialog window title
+
+	.PARAMETER Message
+	The message text to display (supports multi-line with `n)
+
+	.PARAMETER Buttons
+	Button configuration: "OK", "OKCancel", "YesNo", "YesNoCancel"
+
+	.PARAMETER Icon
+	Icon type: "Information", "Warning", "Error", "Question"
+
+	.PARAMETER ParentIcon
+	Optional parent form icon to inherit
+
+	.RETURNS
+	System.Windows.Forms.DialogResult indicating which button was clicked
+	#>
+	param(
+		[string]$Title = "Message",
+		[string]$Message = "",
+		[string]$Buttons = "OK",
+		[string]$Icon = "Information",
+		[System.Drawing.Icon]$ParentIcon = $null
+	)
+
+	# Calculate dialog height based on message length
+	$messageLines = ($Message -split "`n").Count
+	$messageHeight = [Math]::Max(60, $messageLines * 20 + 20)
+	$dialogHeight = $messageHeight + 100
+
+	# Create dialog
+	$messageDialog = New-Object System.Windows.Forms.Form
+	$messageDialog.Text = $Title
+	$messageDialog.Size = New-Object System.Drawing.Size(450, $dialogHeight)
+	$messageDialog.StartPosition = "CenterParent"
+	$messageDialog.FormBorderStyle = "FixedDialog"
+	$messageDialog.MaximizeBox = $false
+	$messageDialog.MinimizeBox = $false
+
+	# Message label
+	$messageLabel = New-Object System.Windows.Forms.Label
+	$messageLabel.Location = New-Object System.Drawing.Point(10, 20)
+	$messageLabel.Size = New-Object System.Drawing.Size(420, $messageHeight)
+	$messageLabel.Text = $Message
+	$messageDialog.Controls.Add($messageLabel)
+
+	# Calculate button Y position
+	$buttonY = $messageHeight + 30
+
+	# Create buttons based on button type
+	if ($Buttons -eq "OK") {
+		$okButton = New-Object System.Windows.Forms.Button
+		$okButton.Location = New-Object System.Drawing.Point(175, $buttonY)
+		$okButton.Size = New-Object System.Drawing.Size(85, 25)
+		$okButton.Text = "OK"
+		$okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+		$messageDialog.AcceptButton = $okButton
+		$messageDialog.Controls.Add($okButton)
+	}
+	elseif ($Buttons -eq "OKCancel") {
+		$okButton = New-Object System.Windows.Forms.Button
+		$okButton.Location = New-Object System.Drawing.Point(240, $buttonY)
+		$okButton.Size = New-Object System.Drawing.Size(85, 25)
+		$okButton.Text = "OK"
+		$okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+		$messageDialog.AcceptButton = $okButton
+		$messageDialog.Controls.Add($okButton)
+
+		$cancelButton = New-Object System.Windows.Forms.Button
+		$cancelButton.Location = New-Object System.Drawing.Point(335, $buttonY)
+		$cancelButton.Size = New-Object System.Drawing.Size(85, 25)
+		$cancelButton.Text = "Cancel"
+		$cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+		$messageDialog.CancelButton = $cancelButton
+		$messageDialog.Controls.Add($cancelButton)
+	}
+	elseif ($Buttons -eq "YesNo") {
+		$yesButton = New-Object System.Windows.Forms.Button
+		$yesButton.Location = New-Object System.Drawing.Point(240, $buttonY)
+		$yesButton.Size = New-Object System.Drawing.Size(85, 25)
+		$yesButton.Text = "Yes"
+		$yesButton.DialogResult = [System.Windows.Forms.DialogResult]::Yes
+		$messageDialog.AcceptButton = $yesButton
+		$messageDialog.Controls.Add($yesButton)
+
+		$noButton = New-Object System.Windows.Forms.Button
+		$noButton.Location = New-Object System.Drawing.Point(335, $buttonY)
+		$noButton.Size = New-Object System.Drawing.Size(85, 25)
+		$noButton.Text = "No"
+		$noButton.DialogResult = [System.Windows.Forms.DialogResult]::No
+		$messageDialog.CancelButton = $noButton
+		$messageDialog.Controls.Add($noButton)
+	}
+	elseif ($Buttons -eq "YesNoCancel") {
+		$yesButton = New-Object System.Windows.Forms.Button
+		$yesButton.Location = New-Object System.Drawing.Point(145, $buttonY)
+		$yesButton.Size = New-Object System.Drawing.Size(85, 25)
+		$yesButton.Text = "Yes"
+		$yesButton.DialogResult = [System.Windows.Forms.DialogResult]::Yes
+		$messageDialog.Controls.Add($yesButton)
+
+		$noButton = New-Object System.Windows.Forms.Button
+		$noButton.Location = New-Object System.Drawing.Point(240, $buttonY)
+		$noButton.Size = New-Object System.Drawing.Size(85, 25)
+		$noButton.Text = "No"
+		$noButton.DialogResult = [System.Windows.Forms.DialogResult]::No
+		$messageDialog.Controls.Add($noButton)
+
+		$cancelButton = New-Object System.Windows.Forms.Button
+		$cancelButton.Location = New-Object System.Drawing.Point(335, $buttonY)
+		$cancelButton.Size = New-Object System.Drawing.Size(85, 25)
+		$cancelButton.Text = "Cancel"
+		$cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+		$messageDialog.CancelButton = $cancelButton
+		$messageDialog.Controls.Add($cancelButton)
+	}
+
+	# Apply theme
+	Set-ThemedDialog -Dialog $messageDialog -ParentIcon $ParentIcon
+
+	# Show dialog and return result
+	return $messageDialog.ShowDialog()
+}
+
 # Helper function to fetch stable WinGet versions from GitHub
 function Get-StableWinGetVersions {
 	<#
@@ -1549,93 +1845,10 @@ function global:Show-ColorPickerDialog {
 
 	# Save Theme button event handler
 	$btnSaveTheme.Add_Click({
-		# Create custom themed input dialog
-		$inputDialog = New-Object System.Windows.Forms.Form
-		$inputDialog.Text = "Save Theme"
-		$inputDialog.Size = New-Object System.Drawing.Size(400, 160)
-		$inputDialog.StartPosition = "CenterParent"
-		$inputDialog.FormBorderStyle = "FixedDialog"
-		$inputDialog.MaximizeBox = $false
-		$inputDialog.MinimizeBox = $false
+		# Show themed input dialog for theme name
+		$themeName = Show-ThemedInputDialog -Title "Save Theme" -Prompt "Enter a name for this theme:" -DefaultValue "My Custom Theme" -ParentIcon $dialog.Icon
 
-		# Set icon (use parent dialog's icon)
-		try {
-			if ($dialog.Icon) {
-				$inputDialog.Icon = $dialog.Icon
-				$inputDialog.ShowIcon = $true
-			} else {
-				$inputDialog.ShowIcon = $false
-			}
-		} catch {
-			$inputDialog.ShowIcon = $false
-		}
-
-		# Label
-		$inputLabel = New-Object System.Windows.Forms.Label
-		$inputLabel.Location = New-Object System.Drawing.Point(10, 20)
-		$inputLabel.Size = New-Object System.Drawing.Size(360, 20)
-		$inputLabel.Text = "Enter a name for this theme:"
-		$inputDialog.Controls.Add($inputLabel)
-
-		# TextBox
-		$inputTextBox = New-Object System.Windows.Forms.TextBox
-		$inputTextBox.Location = New-Object System.Drawing.Point(10, 45)
-		$inputTextBox.Size = New-Object System.Drawing.Size(360, 20)
-		$inputTextBox.Text = "My Custom Theme"
-		$inputDialog.Controls.Add($inputTextBox)
-
-		# OK Button
-		$inputOkButton = New-Object System.Windows.Forms.Button
-		$inputOkButton.Location = New-Object System.Drawing.Point(190, 80)
-		$inputOkButton.Size = New-Object System.Drawing.Size(85, 25)
-		$inputOkButton.Text = "OK"
-		$inputOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-		$inputDialog.AcceptButton = $inputOkButton
-		$inputDialog.Controls.Add($inputOkButton)
-
-		# Cancel Button
-		$inputCancelButton = New-Object System.Windows.Forms.Button
-		$inputCancelButton.Location = New-Object System.Drawing.Point(285, 80)
-		$inputCancelButton.Size = New-Object System.Drawing.Size(85, 25)
-		$inputCancelButton.Text = "Cancel"
-		$inputCancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-		$inputDialog.CancelButton = $inputCancelButton
-		$inputDialog.Controls.Add($inputCancelButton)
-
-		# Apply current theme to input dialog
-		$currentTheme = Get-SandboxStartThemePreference
-		$useDarkTitleBar = $false
-		if ($currentTheme -eq "Dark") {
-			Set-DarkModeTheme -Control $inputDialog
-			$useDarkTitleBar = $true
-		} elseif ($currentTheme -eq "Light") {
-			Set-LightModeTheme -Control $inputDialog
-			$useDarkTitleBar = $false
-		} elseif ($currentTheme -eq "Custom") {
-			$customColors = Get-SandboxStartCustomColors
-			Set-CustomTheme -Control $inputDialog -CustomColors $customColors
-			# Detect if background is dark
-			$bgRgb = $customColors.BackColor -split ','
-			$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
-			$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
-		} elseif ($currentTheme -eq "Auto") {
-			if (Test-SystemUsesLightTheme) {
-				Set-LightModeTheme -Control $inputDialog
-				$useDarkTitleBar = $false
-			} else {
-				Set-DarkModeTheme -Control $inputDialog
-				$useDarkTitleBar = $true
-			}
-		}
-
-		# Apply title bar theme
-		Set-DarkTitleBar -Form $inputDialog -UseDarkMode $useDarkTitleBar
-
-		# Show dialog and get result
-		$result = $inputDialog.ShowDialog()
-		$themeName = $inputTextBox.Text
-
-		if ($result -ne [System.Windows.Forms.DialogResult]::OK -or [string]::IsNullOrWhiteSpace($themeName)) {
+		if ([string]::IsNullOrWhiteSpace($themeName)) {
 			return  # User canceled or empty name
 		}
 
@@ -1644,80 +1857,8 @@ function global:Show-ColorPickerDialog {
 		$potentialPath = Join-Path $themesDir "$safeThemeName.json"
 
 		if (Test-Path $potentialPath) {
-			# Create custom themed overwrite confirmation dialog
-			$overwriteDialog = New-Object System.Windows.Forms.Form
-			$overwriteDialog.Text = "File Exists"
-			$overwriteDialog.Size = New-Object System.Drawing.Size(450, 180)
-			$overwriteDialog.StartPosition = "CenterParent"
-			$overwriteDialog.FormBorderStyle = "FixedDialog"
-			$overwriteDialog.MaximizeBox = $false
-			$overwriteDialog.MinimizeBox = $false
-
-			# Set icon (use parent dialog's icon)
-			try {
-				if ($dialog.Icon) {
-					$overwriteDialog.Icon = $dialog.Icon
-					$overwriteDialog.ShowIcon = $true
-				} else {
-					$overwriteDialog.ShowIcon = $false
-				}
-			} catch {
-				$overwriteDialog.ShowIcon = $false
-			}
-
-			# Warning message label
-			$warningLabel = New-Object System.Windows.Forms.Label
-			$warningLabel.Location = New-Object System.Drawing.Point(10, 20)
-			$warningLabel.Size = New-Object System.Drawing.Size(420, 60)
-			$warningLabel.Text = "A theme file with this name already exists:`n$potentialPath`n`nDo you want to overwrite it?"
-			$overwriteDialog.Controls.Add($warningLabel)
-
-			# OK Button
-			$overwriteOkButton = New-Object System.Windows.Forms.Button
-			$overwriteOkButton.Location = New-Object System.Drawing.Point(240, 100)
-			$overwriteOkButton.Size = New-Object System.Drawing.Size(85, 25)
-			$overwriteOkButton.Text = "OK"
-			$overwriteOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-			$overwriteDialog.AcceptButton = $overwriteOkButton
-			$overwriteDialog.Controls.Add($overwriteOkButton)
-
-			# Cancel Button
-			$overwriteCancelButton = New-Object System.Windows.Forms.Button
-			$overwriteCancelButton.Location = New-Object System.Drawing.Point(335, 100)
-			$overwriteCancelButton.Size = New-Object System.Drawing.Size(85, 25)
-			$overwriteCancelButton.Text = "Cancel"
-			$overwriteCancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-			$overwriteDialog.CancelButton = $overwriteCancelButton
-			$overwriteDialog.Controls.Add($overwriteCancelButton)
-
-			# Apply current theme
-			$currentTheme = Get-SandboxStartThemePreference
-			$useDarkTitleBar = $false
-			if ($currentTheme -eq "Dark") {
-				Set-DarkModeTheme -Control $overwriteDialog
-				$useDarkTitleBar = $true
-			} elseif ($currentTheme -eq "Light") {
-				Set-LightModeTheme -Control $overwriteDialog
-				$useDarkTitleBar = $false
-			} elseif ($currentTheme -eq "Custom") {
-				$customColors = Get-SandboxStartCustomColors
-				Set-CustomTheme -Control $overwriteDialog -CustomColors $customColors
-				$bgRgb = $customColors.BackColor -split ','
-				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
-				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
-			} elseif ($currentTheme -eq "Auto") {
-				if (Test-SystemUsesLightTheme) {
-					Set-LightModeTheme -Control $overwriteDialog
-					$useDarkTitleBar = $false
-				} else {
-					Set-DarkModeTheme -Control $overwriteDialog
-					$useDarkTitleBar = $true
-				}
-			}
-
-			Set-DarkTitleBar -Form $overwriteDialog -UseDarkMode $useDarkTitleBar
-
-			$result = $overwriteDialog.ShowDialog()
+			# Show themed overwrite confirmation dialog
+			$result = Show-ThemedMessageDialog -Title "File Exists" -Message "A theme file with this name already exists:`n$potentialPath`n`nDo you want to overwrite it?" -Buttons "OKCancel" -Icon "Warning" -ParentIcon $dialog.Icon
 			if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
 				return  # User chose not to overwrite
 			}
@@ -1737,137 +1878,11 @@ function global:Show-ColorPickerDialog {
 		$savedPath = Export-SandboxStartTheme -Colors $colorsToSave -ThemeName $themeName
 
 		if ($savedPath) {
-			# Create custom themed success dialog
-			$successDialog = New-Object System.Windows.Forms.Form
-			$successDialog.Text = "Theme Saved"
-			$successDialog.Size = New-Object System.Drawing.Size(450, 160)
-			$successDialog.StartPosition = "CenterParent"
-			$successDialog.FormBorderStyle = "FixedDialog"
-			$successDialog.MaximizeBox = $false
-			$successDialog.MinimizeBox = $false
-
-			# Set icon
-			try {
-				if ($dialog.Icon) {
-					$successDialog.Icon = $dialog.Icon
-					$successDialog.ShowIcon = $true
-				} else {
-					$successDialog.ShowIcon = $false
-				}
-			} catch {
-				$successDialog.ShowIcon = $false
-			}
-
-			# Success message label
-			$successLabel = New-Object System.Windows.Forms.Label
-			$successLabel.Location = New-Object System.Drawing.Point(10, 20)
-			$successLabel.Size = New-Object System.Drawing.Size(420, 50)
-			$successLabel.Text = "Theme saved successfully to:`n$savedPath"
-			$successDialog.Controls.Add($successLabel)
-
-			# OK Button
-			$successOkButton = New-Object System.Windows.Forms.Button
-			$successOkButton.Location = New-Object System.Drawing.Point(335, 85)
-			$successOkButton.Size = New-Object System.Drawing.Size(85, 25)
-			$successOkButton.Text = "OK"
-			$successOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-			$successDialog.AcceptButton = $successOkButton
-			$successDialog.Controls.Add($successOkButton)
-
-			# Apply current theme
-			$currentTheme = Get-SandboxStartThemePreference
-			$useDarkTitleBar = $false
-			if ($currentTheme -eq "Dark") {
-				Set-DarkModeTheme -Control $successDialog
-				$useDarkTitleBar = $true
-			} elseif ($currentTheme -eq "Light") {
-				Set-LightModeTheme -Control $successDialog
-				$useDarkTitleBar = $false
-			} elseif ($currentTheme -eq "Custom") {
-				$customColors = Get-SandboxStartCustomColors
-				Set-CustomTheme -Control $successDialog -CustomColors $customColors
-				$bgRgb = $customColors.BackColor -split ','
-				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
-				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
-			} elseif ($currentTheme -eq "Auto") {
-				if (Test-SystemUsesLightTheme) {
-					Set-LightModeTheme -Control $successDialog
-					$useDarkTitleBar = $false
-				} else {
-					Set-DarkModeTheme -Control $successDialog
-					$useDarkTitleBar = $true
-				}
-			}
-
-			Set-DarkTitleBar -Form $successDialog -UseDarkMode $useDarkTitleBar
-
-			$successDialog.ShowDialog() | Out-Null
+			# Show themed success dialog
+			Show-ThemedMessageDialog -Title "Theme Saved" -Message "Theme saved successfully to:`n$savedPath" -Buttons "OK" -Icon "Information" -ParentIcon $dialog.Icon | Out-Null
 		} else {
-			# Create custom themed error dialog
-			$errorDialog = New-Object System.Windows.Forms.Form
-			$errorDialog.Text = "Save Error"
-			$errorDialog.Size = New-Object System.Drawing.Size(450, 160)
-			$errorDialog.StartPosition = "CenterParent"
-			$errorDialog.FormBorderStyle = "FixedDialog"
-			$errorDialog.MaximizeBox = $false
-			$errorDialog.MinimizeBox = $false
-
-			# Set icon
-			try {
-				if ($dialog.Icon) {
-					$errorDialog.Icon = $dialog.Icon
-					$errorDialog.ShowIcon = $true
-				} else {
-					$errorDialog.ShowIcon = $false
-				}
-			} catch {
-				$errorDialog.ShowIcon = $false
-			}
-
-			# Error message label
-			$errorLabel = New-Object System.Windows.Forms.Label
-			$errorLabel.Location = New-Object System.Drawing.Point(10, 20)
-			$errorLabel.Size = New-Object System.Drawing.Size(420, 50)
-			$errorLabel.Text = "Failed to save theme. Check error messages for details."
-			$errorDialog.Controls.Add($errorLabel)
-
-			# OK Button
-			$errorOkButton = New-Object System.Windows.Forms.Button
-			$errorOkButton.Location = New-Object System.Drawing.Point(335, 85)
-			$errorOkButton.Size = New-Object System.Drawing.Size(85, 25)
-			$errorOkButton.Text = "OK"
-			$errorOkButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-			$errorDialog.AcceptButton = $errorOkButton
-			$errorDialog.Controls.Add($errorOkButton)
-
-			# Apply current theme
-			$currentTheme = Get-SandboxStartThemePreference
-			$useDarkTitleBar = $false
-			if ($currentTheme -eq "Dark") {
-				Set-DarkModeTheme -Control $errorDialog
-				$useDarkTitleBar = $true
-			} elseif ($currentTheme -eq "Light") {
-				Set-LightModeTheme -Control $errorDialog
-				$useDarkTitleBar = $false
-			} elseif ($currentTheme -eq "Custom") {
-				$customColors = Get-SandboxStartCustomColors
-				Set-CustomTheme -Control $errorDialog -CustomColors $customColors
-				$bgRgb = $customColors.BackColor -split ','
-				$bgColor = [System.Drawing.Color]::FromArgb([int]$bgRgb[0], [int]$bgRgb[1], [int]$bgRgb[2])
-				$useDarkTitleBar = Test-ColorIsDark -Color $bgColor
-			} elseif ($currentTheme -eq "Auto") {
-				if (Test-SystemUsesLightTheme) {
-					Set-LightModeTheme -Control $errorDialog
-					$useDarkTitleBar = $false
-				} else {
-					Set-DarkModeTheme -Control $errorDialog
-					$useDarkTitleBar = $true
-				}
-			}
-
-			Set-DarkTitleBar -Form $errorDialog -UseDarkMode $useDarkTitleBar
-
-			$errorDialog.ShowDialog() | Out-Null
+			# Show themed error dialog
+			Show-ThemedMessageDialog -Title "Save Error" -Message "Failed to save theme. Check error messages for details." -Buttons "OK" -Icon "Error" -ParentIcon $dialog.Icon | Out-Null
 		}
 	}.GetNewClosure())
 
@@ -2071,14 +2086,6 @@ function global:Show-ColorPickerDialog {
 
 	# Show dialog
 	$dialog.ShowDialog() | Out-Null
-}
-
-# DEPRECATED: Old theme toggle handler - replaced with right-click context menu
-# Kept for reference, no longer used
-$global:ToggleFormThemeHandler = {
-	param($FormControl, $UpdateButtonColor)
-	# This function is deprecated and no longer called
-	# Theme selection now done via right-click context menu
 }
 
 # Define the dialog function here since it's needed before the main functions section
@@ -2296,6 +2303,7 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$txtMapFolder.Text = $Script:WorkingDir
 		}
 		$form.Controls.Add($txtMapFolder)
+		$txtMapFolder.Enabled = $false  # Disable direct editing - users must use browse buttons
 
 		$y += $labelHeight + $controlHeight + 5
 
@@ -3273,36 +3281,39 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$btnSaveScript.Text = "Save"
 		$btnSaveScript.Add_Click({
 			if ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
-				[System.Windows.Forms.MessageBox]::Show("No script content to save.", "Save Error", "OK", "Warning")
+				Show-ThemedMessageDialog -Title "Save Error" -Message "No script content to save." -Buttons "OK" -Icon "Warning" -ParentIcon $form.Icon | Out-Null
 				return
 			}
 
-			# If we have a current file, save directly
+			# If we have a current file, save directly (silent save)
 			if ($script:currentScriptFile -and (Test-Path (Split-Path $script:currentScriptFile -Parent))) {
 				try {
 					$txtScript.Text | Out-File -FilePath $script:currentScriptFile -Encoding UTF8
-					[System.Windows.Forms.MessageBox]::Show("Script saved successfully to:`n$($script:currentScriptFile)", "Save Complete", "OK", "Information")
+					# Silent save - no success dialog
 				}
 				catch {
-					[System.Windows.Forms.MessageBox]::Show("Error saving script: $($_.Exception.Message)", "Save Error", "OK", "Error")
+					Show-ThemedMessageDialog -Title "Save Error" -Message "Error saving script: $($_.Exception.Message)" -Buttons "OK" -Icon "Error" -ParentIcon $form.Icon | Out-Null
 				}
 			}
 			else {
-				# No current file or parent directory doesn't exist - show Save As dialog
-				$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-				$saveFileDialog.InitialDirectory = $wsbDir
-				$saveFileDialog.Filter = "PowerShell Scripts (*.ps1)|*.ps1"
-				$saveFileDialog.DefaultExt = "ps1"
-				$saveFileDialog.Title = "Save Script"
+				# No current file - show themed input dialog for filename
+				$scriptName = Show-ThemedInputDialog -Title "Save Script" -Prompt "Enter script filename (without .ps1):" -DefaultValue "" -ParentIcon $form.Icon
 
-				if ($saveFileDialog.ShowDialog() -eq "OK") {
-					# Enforce .ps1 extension
-					$targetPath = if ([System.IO.Path]::GetExtension($saveFileDialog.FileName).ToLower() -ne ".ps1") {
-						"$($saveFileDialog.FileName).ps1"
-					} else {
-						$saveFileDialog.FileName
+				if (-not [string]::IsNullOrWhiteSpace($scriptName)) {
+					# Auto-append .ps1 extension if missing
+					$scriptNameStr = [string]$scriptName
+					$fileName = if ($scriptNameStr.EndsWith('.ps1')) { $scriptNameStr } else { "$scriptNameStr.ps1" }
+					$targetPath = Join-Path $wsbDir $fileName
+
+					# Check if file exists - show overwrite confirmation
+					if (Test-Path $targetPath) {
+						$result = Show-ThemedMessageDialog -Title "File Exists" -Message "File already exists:`n$targetPath`n`nOverwrite?" -Buttons "OKCancel" -Icon "Warning" -ParentIcon $form.Icon
+						if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+							return  # User canceled
+						}
 					}
 
+					# Save file
 					try {
 						# Ensure wsb directory exists
 						if (-not (Test-Path $wsbDir)) {
@@ -3313,10 +3324,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 						# Update current file tracking
 						$script:currentScriptFile = $targetPath
 
-						[System.Windows.Forms.MessageBox]::Show("Script saved successfully to:`n$targetPath", "Save Complete", "OK", "Information")
+						Show-ThemedMessageDialog -Title "Save Complete" -Message "Script saved successfully to:`n$targetPath" -Buttons "OK" -Icon "Information" -ParentIcon $form.Icon | Out-Null
 					}
 					catch {
-						[System.Windows.Forms.MessageBox]::Show("Error saving script: $($_.Exception.Message)", "Save Error", "OK", "Error")
+						Show-ThemedMessageDialog -Title "Save Error" -Message "Error saving script: $($_.Exception.Message)" -Buttons "OK" -Icon "Error" -ParentIcon $form.Icon | Out-Null
 					}
 				}
 			}
@@ -3354,29 +3365,34 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$btnSaveAsScript.Text = "Save as..."
 		$btnSaveAsScript.Add_Click({
 			if ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
-				[System.Windows.Forms.MessageBox]::Show("No script content to save.", "Save Error", "OK", "Warning")
+				Show-ThemedMessageDialog -Title "Save Error" -Message "No script content to save." -Buttons "OK" -Icon "Warning" -ParentIcon $form.Icon | Out-Null
 				return
 			}
 
-			$saveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-			$saveFileDialog.InitialDirectory = $wsbDir
-			$saveFileDialog.Filter = "PowerShell Scripts (*.ps1)|*.ps1"
-			$saveFileDialog.DefaultExt = "ps1"
-			$saveFileDialog.Title = "Save Script As"
-
-			# Pre-populate filename only if it's NOT a default script
+			# Get default filename (if current script is custom, not default)
+			$defaultName = ""
 			if ($script:currentScriptFile -and -not (Test-IsDefaultScript -FilePath $script:currentScriptFile)) {
-				$saveFileDialog.FileName = [System.IO.Path]::GetFileName($script:currentScriptFile)
+				$defaultName = [System.IO.Path]::GetFileNameWithoutExtension($script:currentScriptFile)
 			}
 
-			if ($saveFileDialog.ShowDialog() -eq "OK") {
-				# Enforce .ps1 extension
-				$targetPath = if ([System.IO.Path]::GetExtension($saveFileDialog.FileName).ToLower() -ne ".ps1") {
-					"$($saveFileDialog.FileName).ps1"
-				} else {
-					$saveFileDialog.FileName
+			# Show themed input dialog for filename
+			$scriptName = Show-ThemedInputDialog -Title "Save Script As" -Prompt "Enter script filename (without .ps1):" -DefaultValue $defaultName -ParentIcon $form.Icon
+
+			if (-not [string]::IsNullOrWhiteSpace($scriptName)) {
+				# Auto-append .ps1 extension if missing
+				$scriptNameStr = [string]$scriptName
+				$fileName = if ($scriptNameStr.EndsWith('.ps1')) { $scriptNameStr } else { "$scriptNameStr.ps1" }
+				$targetPath = Join-Path $wsbDir $fileName
+
+				# Check if file exists - show overwrite confirmation
+				if (Test-Path $targetPath) {
+					$result = Show-ThemedMessageDialog -Title "File Exists" -Message "File already exists:`n$targetPath`n`nOverwrite?" -Buttons "OKCancel" -Icon "Warning" -ParentIcon $form.Icon
+					if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
+						return  # User canceled
+					}
 				}
 
+				# Save file
 				try {
 					# Ensure wsb directory exists
 					if (-not (Test-Path $wsbDir)) {
@@ -3387,10 +3403,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					# Update current file tracking
 					$script:currentScriptFile = $targetPath
 
-					[System.Windows.Forms.MessageBox]::Show("Script saved successfully to:`n$targetPath", "Save Complete", "OK", "Information")
+					Show-ThemedMessageDialog -Title "Save Complete" -Message "Script saved successfully to:`n$targetPath" -Buttons "OK" -Icon "Information" -ParentIcon $form.Icon | Out-Null
 				}
 				catch {
-					[System.Windows.Forms.MessageBox]::Show("Error saving script: $($_.Exception.Message)", "Save Error", "OK", "Error")
+					Show-ThemedMessageDialog -Title "Save Error" -Message "Error saving script: $($_.Exception.Message)" -Buttons "OK" -Icon "Error" -ParentIcon $form.Icon | Out-Null
 				}
 			}
 		})
