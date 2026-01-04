@@ -234,6 +234,9 @@ function Show-PackageListEditor {
 		$txtListName.Size = New-Object System.Drawing.Size($controlWidth, 23)
 		$txtListName.Text = $ListName
 		$txtListName.ReadOnly = ($ListName -ne "")
+		if ($ListName -ne "") {
+			$txtListName.Enabled = $false
+		}
 		$editorForm.Controls.Add($txtListName)
 
 		$y += 50
@@ -269,9 +272,13 @@ function Show-PackageListEditor {
 		$listPath = if ($ListName) { Join-Path (Join-Path $Script:WorkingDir "wsb") "$ListName.txt" } else { $null }
 	}
 
+	# Variable to track original content for change detection
+	$originalContent = ""
+
 	if ($listPath -and (Test-Path $listPath)) {
 		try {
-			$txtPackages.Text = (Get-Content -Path $listPath -Raw).Trim()
+			$originalContent = (Get-Content -Path $listPath -Raw).Trim()
+			$txtPackages.Text = $originalContent
 		}
 		catch {
 			[System.Windows.Forms.MessageBox]::Show("Error loading: $($_.Exception.Message)", "Load Error", "OK", "Error")
@@ -358,6 +365,10 @@ Comments: Lines starting with # are ignored.
 			$packageContent = $txtPackages.Text.Trim()
 			Set-Content -Path $listPath -Value $packageContent -Encoding UTF8
 
+			# Update original content and disable Save button
+			$originalContent = $packageContent
+			$btnSave.Enabled = $false
+
 			$script:__editorReturn = @{
 				DialogResult = 'OK'
 				ListName = $listNameValue
@@ -379,6 +390,18 @@ Comments: Lines starting with # are ignored.
 		$editorForm.Close()
 	})
 	$editorForm.Controls.Add($btnCancel)
+
+	# Set initial Save button state - disabled if editing existing content
+	if ($listPath -and (Test-Path $listPath)) {
+		$btnSave.Enabled = $false
+	}
+
+	# Add TextChanged event to enable/disable Save button based on changes
+	$txtPackages.Add_TextChanged({
+		$currentContent = $txtPackages.Text.Trim()
+		$hasChanged = ($currentContent -ne $originalContent)
+		$btnSave.Enabled = $hasChanged
+	})
 
 	$editorForm.AcceptButton = $btnSave
 	$editorForm.CancelButton = $btnCancel
@@ -3256,12 +3279,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 						$txtScript.Text = $txtScript.Text -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$currentFolderName`""
 					}
 
-					# Update Save button state for loaded file
-					if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
-						$btnSaveScript.Enabled = $false
-					} else {
-						$btnSaveScript.Enabled = $true
-					}
+					# Store original content for change tracking
+					$script:originalScriptContent = $txtScript.Text
+
+					# Update Save button state for loaded file (disabled until changes are made)
+					$btnSaveScript.Enabled = $false
 
 					# Update status to show loaded script
 					$scriptFileName = [System.IO.Path]::GetFileName($openFileDialog.FileName)
@@ -3289,6 +3311,9 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			if ($script:currentScriptFile -and (Test-Path (Split-Path $script:currentScriptFile -Parent))) {
 				try {
 					$txtScript.Text | Out-File -FilePath $script:currentScriptFile -Encoding UTF8
+					# Update original content and disable Save button after successful save
+					$script:originalScriptContent = $txtScript.Text
+					$btnSaveScript.Enabled = $false
 					# Silent save - no success dialog
 				}
 				catch {
@@ -3321,8 +3346,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 						}
 						$txtScript.Text | Out-File -FilePath $targetPath -Encoding UTF8
 
-						# Update current file tracking
+						# Update current file tracking and original content
 						$script:currentScriptFile = $targetPath
+						$script:originalScriptContent = $txtScript.Text
+						$btnSaveScript.Enabled = $false
 
 						Show-ThemedMessageDialog -Title "Save Complete" -Message "Script saved successfully to:`n$targetPath" -Buttons "OK" -Icon "Information" -ParentIcon $form.Icon | Out-Null
 					}
@@ -3353,8 +3380,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				# No file path - must use Save As
 				$btnSaveScript.Enabled = $false
 			} else {
-				# Valid non-default script with content
-				$btnSaveScript.Enabled = $true
+				# Enable Save button only if content has changed
+				$currentContent = $txtScript.Text
+				$hasChanged = ($null -eq $script:originalScriptContent) -or ($currentContent -ne $script:originalScriptContent)
+				$btnSaveScript.Enabled = $hasChanged
 			}
 		})
 
@@ -3400,8 +3429,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					}
 					$txtScript.Text | Out-File -FilePath $targetPath -Encoding UTF8
 
-					# Update current file tracking
+					# Update current file tracking and original content
 					$script:currentScriptFile = $targetPath
+					$script:originalScriptContent = $txtScript.Text
+					$btnSaveScript.Enabled = $false
 
 					Show-ThemedMessageDialog -Title "Save Complete" -Message "Script saved successfully to:`n$targetPath" -Buttons "OK" -Icon "Information" -ParentIcon $form.Icon | Out-Null
 				}
