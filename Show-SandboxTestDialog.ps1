@@ -2118,7 +2118,8 @@ function Show-SandboxTestDialog {
 	Shows a GUI dialog for configuring Windows Sandbox test parameters
 
 	.DESCRIPTION
-	Creates a Windows Forms dialog to collect all parameters needed for SandboxTest function
+	Creates a Windows Forms dialog to collect all parameters needed for SandboxTest function.
+	Can pre-fill paths from parent script via $script:InitialFolderPath and $script:InitialFilePath.
 	#>
 
 	# Embedded icon data (Base64-encoded from Source\assets\icon.ico)
@@ -3573,13 +3574,234 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				$this.HorizontalScroll.Maximum = 0
 				$this.PerformLayout()  # Force layout refresh
 			}
+
+			# Set initial paths from context menu parameters (simple text assignment only)
+			if ($script:InitialFolderPath -and (Test-Path $script:InitialFolderPath)) {
+				$txtFolder.Text = $script:InitialFolderPath
+			}
+			if ($script:InitialFilePath -and (Test-Path $script:InitialFilePath)) {
+				$txtFile.Text = $script:InitialFilePath
+				# Also set folder path for file context
+				if (-not $txtFolder.Text) {
+					$txtFolder.Text = Split-Path $script:InitialFilePath -Parent
+				}
+			}
 		})
 
 		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
 		Set-ThemeToForm -Form $form -UpdateButtonColor $updateButtonGreen
 
 		# Attach right-click context menu for theme selection (AFTER theme is applied)
-		$form.ContextMenuStrip = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen
+		$contextMenu = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen
+		$form.ContextMenuStrip = $contextMenu
+
+		# Add Context Menu Integration toggle ONLY if running in SandboxStart (not WAU-Settings-GUI)
+		$sandboxStartScript = Join-Path $Script:WorkingDir 'SandboxStart.ps1'
+		if (Test-Path $sandboxStartScript) {
+			# Capture WorkingDir in local variable for use in scriptblocks
+			$localWorkingDir = $Script:WorkingDir
+
+			# Define inline helper functions to avoid loading Update-StartMenuShortcut.ps1 (prevents loop)
+			$testContextMenu = {
+				# Use reg.exe instead of Test-Path to avoid performance issues with HKCU:\Software\Classes\*
+				# Use Start-Process to suppress stderr output in Windows Forms
+				$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
+				$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+
+				# Check folder key
+				$psi = New-Object System.Diagnostics.ProcessStartInfo
+				$psi.FileName = 'reg.exe'
+				$psi.Arguments = "query `"$folderKeyReg`""
+				$psi.RedirectStandardOutput = $true
+				$psi.RedirectStandardError = $true
+				$psi.UseShellExecute = $false
+				$psi.CreateNoWindow = $true
+				$p = New-Object System.Diagnostics.Process
+				$p.StartInfo = $psi
+				$p.Start() | Out-Null
+				$output = $p.StandardOutput.ReadToEnd()
+				$p.WaitForExit()
+				$folderExists = $output -match 'SandboxStart'
+
+				# Check file key
+				$psi.Arguments = "query `"$fileKeyReg`""
+				$p = New-Object System.Diagnostics.Process
+				$p.StartInfo = $psi
+				$p.Start() | Out-Null
+				$output = $p.StandardOutput.ReadToEnd()
+				$p.WaitForExit()
+				$fileExists = $output -match 'SandboxStart'
+
+				return ($folderExists -and $fileExists)
+			}
+
+			$updateContextMenu = {
+				param([string]$WorkingDir, [bool]$Remove)
+
+				try {
+					Write-Verbose "updateContextMenu called: WorkingDir=$WorkingDir, Remove=$Remove"
+
+					$scriptPath = Join-Path $WorkingDir 'SandboxStart.ps1'
+					$iconPath = Join-Path $WorkingDir 'startmenu-icon.ico'
+					$folderKey = 'HKCU:\Software\Classes\Directory\shell\SandboxStart'
+
+					if ($Remove) {
+						Write-Verbose "Removing context menu entries..."
+
+						# Use reg.exe for checking existence to avoid performance issues with * in path
+						$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
+						$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+
+						# Check and remove folder context menu
+						# Check folder key with Start-Process to suppress stderr
+						$psi = New-Object System.Diagnostics.ProcessStartInfo
+						$psi.FileName = 'reg.exe'
+						$psi.Arguments = "query `"$folderKeyReg`""
+						$psi.RedirectStandardOutput = $true
+						$psi.RedirectStandardError = $true
+						$psi.UseShellExecute = $false
+						$psi.CreateNoWindow = $true
+						$p = New-Object System.Diagnostics.Process
+						$p.StartInfo = $psi
+						$p.Start() | Out-Null
+						$output = $p.StandardOutput.ReadToEnd()
+						$p.WaitForExit()
+						if ($output -match 'SandboxStart') {
+							Remove-Item $folderKey -Recurse -Force -ErrorAction Stop
+							Write-Verbose "Removed folder key"
+						}
+
+						# Check and remove file context menu (use reg.exe delete to avoid Remove-Item hang on *)
+						$psi.Arguments = "query `"$fileKeyReg`""
+						$p = New-Object System.Diagnostics.Process
+						$p.StartInfo = $psi
+						$p.Start() | Out-Null
+						$output = $p.StandardOutput.ReadToEnd()
+						$p.WaitForExit()
+						if ($output -match 'SandboxStart') {
+							$null = reg.exe delete "$fileKeyReg" /f 2>&1
+							Write-Verbose "Removed file key"
+						}
+
+						return $true
+					}
+
+					# Create folder context menu
+					Write-Verbose "Creating folder context menu..."
+					if (-not (Test-Path $folderKey)) {
+						Write-Verbose "Creating new folder key: $folderKey"
+						$null = New-Item -Path $folderKey -Force -ErrorAction Stop
+					}
+					Write-Verbose "Setting folder key default value..."
+					$null = New-ItemProperty -Path $folderKey -Name '(Default)' -Value 'Test in Windows Sandbox' -PropertyType String -Force -ErrorAction Stop
+					Write-Verbose "Setting folder key icon..."
+					$null = New-ItemProperty -Path $folderKey -Name 'Icon' -Value $iconPath -PropertyType String -Force -ErrorAction Stop
+
+					$folderCommandKey = "$folderKey\command"
+					Write-Verbose "Creating folder command key: $folderCommandKey"
+					if (-not (Test-Path $folderCommandKey)) {
+						$null = New-Item -Path $folderCommandKey -Force -ErrorAction Stop
+					}
+					Write-Verbose "Setting folder command value..."
+					$null = New-ItemProperty -Path $folderCommandKey -Name '(Default)' -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -FolderPath `"%V`"" -PropertyType String -Force -ErrorAction Stop
+					Write-Verbose "Folder context menu created"
+
+					# Create file context menu using PowerShell registry provider (reg.exe cannot handle * in path)
+					Write-Verbose "Creating file context menu..."
+					# Use reg.exe for ALL operations on * key (PowerShell cmdlets hang on *)
+					$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+					$fileCommandKeyReg = "$fileKeyReg\command"
+
+					Write-Verbose "Creating registry key: $fileKeyReg"
+					$null = reg.exe add "$fileKeyReg" /f 2>&1
+
+					Write-Verbose "Setting file key default value..."
+					$null = reg.exe add "$fileKeyReg" /ve /d "Test in Windows Sandbox" /f 2>&1
+
+					Write-Verbose "Setting file key icon..."
+					$null = reg.exe add "$fileKeyReg" /v Icon /d "$iconPath" /f 2>&1
+
+					Write-Verbose "Creating registry key: $fileCommandKeyReg"
+					$null = reg.exe add "$fileCommandKeyReg" /f 2>&1
+
+					Write-Verbose "Setting file command value..."
+					$fileCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \`"$scriptPath\`" -FilePath \`"%1\`""
+					$null = reg.exe add "$fileCommandKeyReg" /ve /d "$fileCommand" /f 2>&1
+					Write-Verbose "File context menu created"
+
+					return $true
+				}
+				catch {
+					$errorMsg = "updateContextMenu failed: $_
+Stack Trace: $($_.ScriptStackTrace)"
+					Write-Error $errorMsg
+					[System.Windows.Forms.MessageBox]::Show($errorMsg, 'Context Menu Error', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+					return $false
+				}
+			}
+
+			$menuContextIntegration = New-Object System.Windows.Forms.ToolStripMenuItem
+			$isInstalled = & $testContextMenu
+
+			if ($isInstalled) {
+				$menuContextIntegration.Text = "Disable Context Menu Integration"
+			}
+			else {
+				$menuContextIntegration.Text = "Enable Context Menu Integration"
+			}
+
+			$menuContextIntegration.Add_Click({
+				param($menuItem, $e)
+				$currentlyInstalled = & $testContextMenu
+
+				if ($currentlyInstalled) {
+					# Disable
+					$result = Show-ThemedMessageDialog `
+						-Title "Disable Context Menu Integration" `
+						-Message "Remove 'Test in Windows Sandbox' from folder and file context menus?" `
+						-Buttons "OKCancel" `
+						-Icon "Question" `
+						-ParentIcon $appIcon
+
+					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+						if (& $updateContextMenu -WorkingDir $localWorkingDir -Remove $true) {
+							Show-ThemedMessageDialog `
+								-Title "Success" `
+								-Message "Context menu integration has been disabled." `
+								-Buttons "OK" `
+								-Icon "Information" `
+								-ParentIcon $appIcon
+							$menuItem.Text = "Enable Context Menu Integration"
+						}
+					}
+				}
+				else {
+					# Enable
+					$result = Show-ThemedMessageDialog `
+						-Title "Enable Context Menu Integration" `
+						-Message "Add 'Test in Windows Sandbox' to folder and file context menus?`n`nThis allows you to right-click folders/files and test them directly." `
+						-Buttons "OKCancel" `
+						-Icon "Question" `
+						-ParentIcon $appIcon
+
+					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+						if (& $updateContextMenu -WorkingDir $localWorkingDir -Remove $false) {
+							Show-ThemedMessageDialog `
+								-Title "Success" `
+								-Message "Context menu integration has been enabled.`n`nYou can now right-click folders and files to test them in Windows Sandbox." `
+								-Buttons "OK" `
+								-Icon "Information" `
+								-ParentIcon $appIcon
+							$menuItem.Text = "Disable Context Menu Integration"
+						}
+					}
+				}
+			}.GetNewClosure())
+
+			# Insert at the beginning of the context menu (before theme options)
+			$contextMenu.Items.Insert(0, (New-Object System.Windows.Forms.ToolStripSeparator))
+			$contextMenu.Items.Insert(0, $menuContextIntegration)
+		}
 
 		# Show dialog (modal)
 		[void]$form.ShowDialog()
