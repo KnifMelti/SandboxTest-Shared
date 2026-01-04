@@ -2568,7 +2568,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
-			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.cmd;*.bat;*.ps1;*.ahk;*.py;*.js)|*.exe;*.msi;*.cmd;*.bat;*.ps1;*.ahk;*.py;*.js|All Files (*.*)|*.*"
+			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.py;*.js)|*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.py;*.js|All Files (*.*)|*.*"
 			$fileDialog.InitialDirectory = $txtMapFolder.Text
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
