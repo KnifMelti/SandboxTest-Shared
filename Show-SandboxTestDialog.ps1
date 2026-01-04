@@ -1,4 +1,4 @@
-# Note: Theme preference is now stored in registry via Get-SandboxStartThemePreference()
+﻿# Note: Theme preference is now stored in registry via Get-SandboxStartThemePreference()
 # Old $script:UserThemeOverride variable removed - use registry functions instead
 
 function Get-ScriptMappings {
@@ -459,6 +459,186 @@ function Find-MatchingScript {
 	}
 }
 
+
+# Process selected folder or file and update form controls
+function global:Update-FormFromSelection {
+	param(
+		[string]$SelectedPath,
+		[string]$FileName = $null,
+		[System.Windows.Forms.TextBox]$txtMapFolder,
+		[System.Windows.Forms.TextBox]$txtSandboxFolderName,
+		[System.Windows.Forms.TextBox]$txtScript,
+		[System.Windows.Forms.Label]$lblStatus,
+		[System.Windows.Forms.Button]$btnSaveScript,
+		[System.Windows.Forms.CheckBox]$chkNetworking,
+		[System.Windows.Forms.CheckBox]$chkSkipWinGet,
+		[System.Windows.Forms.ComboBox]$cmbInstallPackages,
+		[string]$wsbDir
+	)
+
+	# Determine if this is a file or folder selection
+	$isFile = ![string]::IsNullOrWhiteSpace($FileName)
+
+	# Get directory path
+	if ($isFile) {
+		$selectedDir = [System.IO.Path]::GetDirectoryName($SelectedPath)
+	} else {
+		$selectedDir = $SelectedPath
+	}
+
+	# Update mapped folder textbox
+	$txtMapFolder.Text = $selectedDir
+
+	# Update sandbox folder name
+	if (!$isFile) {
+		# Folder selected - check for WAU MSI files
+		$msiFiles = Get-ChildItem -Path $selectedDir -Filter "WAU*.msi" -File -ErrorAction SilentlyContinue
+		if ($msiFiles) {
+			$txtSandboxFolderName.Text = "WAU-install"
+		} else {
+			$folderName = Split-Path $selectedDir -Leaf
+			# Check if it's a root drive (contains : or is a path like D:\)
+			if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
+				$txtSandboxFolderName.Text = $folderName
+			} else {
+				# Root drive selected (e.g., D:\) - use drive letter as folder name
+				$driveLetter = $selectedDir.TrimEnd('\').Replace(':', '')
+				if (![string]::IsNullOrWhiteSpace($driveLetter)) {
+					$txtSandboxFolderName.Text = "Drive_$driveLetter"
+				} else {
+					$txtSandboxFolderName.Text = "MappedFolder"
+				}
+			}
+		}
+	} else {
+		# File selected - use directory name only (no WAU detection)
+		$folderName = Split-Path $selectedDir -Leaf
+		# Check if it's a root drive (contains : or is a path like D:\)
+		if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
+			$txtSandboxFolderName.Text = $folderName
+		} else {
+			# Root drive selected (e.g., D:\) - use drive letter as folder name
+			$driveLetter = $selectedDir.TrimEnd('\').Replace(':', '')
+			if (![string]::IsNullOrWhiteSpace($driveLetter)) {
+				$txtSandboxFolderName.Text = "Drive_$driveLetter"
+			} else {
+				$txtSandboxFolderName.Text = "MappedFolder"
+			}
+		}
+	}
+
+	# Handle script selection
+	if ($isFile) {
+		# Generate script for selected file directly using Std-File.ps1
+		$txtScript.Text = @"
+`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
+& "`$env:USERPROFILE\Desktop\SandboxTest\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$FileName"
+"@
+
+		$lblStatus.Text = "Status: File selected -> $FileName (using Std-File.ps1)"
+
+		# Store selected file for re-evaluation when checkboxes change
+		$script:currentSelectedFile = $FileName
+
+		# Auto-select Python package if .py file detected
+		if ($FileName -like "*.py") {
+			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
+
+			if ($winGetFeaturesEnabled) {
+				# WinGet is available - check if Python package list exists
+				$pythonPackageName = "Python"
+
+				if ($cmbInstallPackages.Items -contains $pythonPackageName) {
+					# Python package list exists - auto-select it
+					$cmbInstallPackages.SelectedItem = $pythonPackageName
+					$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
+				} else {
+					# Python package list doesn't exist - show warning
+					$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
+				}
+			} elseif ($chkSkipWinGet.Checked) {
+				# Skip WinGet is enabled - show warning
+				$lblStatus.Text = "Status: .py selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+			} else {
+				# Networking disabled - show warning
+				$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
+			}
+		}
+
+		# Auto-select AutoHotkey package if .ahk file detected
+		if ($FileName -like "*.ahk") {
+			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
+
+			if ($winGetFeaturesEnabled) {
+				# WinGet is available - check if AHK package list exists
+				$ahkPackageName = "AHK"
+
+				if ($cmbInstallPackages.Items -contains $ahkPackageName) {
+					# AHK package list exists - auto-select it
+					$cmbInstallPackages.SelectedItem = $ahkPackageName
+					$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
+				} else {
+					# AHK package list doesn't exist - show warning
+					$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
+				}
+			} elseif ($chkSkipWinGet.Checked) {
+				# Skip WinGet is enabled - show warning
+				$lblStatus.Text = "Status: .ahk selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+			} else {
+				# Networking disabled - show warning
+				$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
+			}
+		}
+
+		# Reset tracking variables
+		$script:currentScriptFile = $null
+		$btnSaveScript.Enabled = $false
+	} else {
+		# Folder selected - find matching script from mappings
+		$matchingScript = Find-MatchingScript -Path $selectedDir
+		$scriptName = $matchingScript.Replace('.ps1', '')
+
+		# Load script using the dynamic loading function
+		$scriptContent = Get-DefaultScriptContent -ScriptName $scriptName -WsbDir $wsbDir
+
+		# Fallback to Installer if script not found
+		if ([string]::IsNullOrWhiteSpace($scriptContent)) {
+			$scriptContent = Get-DefaultScriptContent -ScriptName "Std-Install" -WsbDir $wsbDir
+			$scriptName = "Std-Install"
+			if ([string]::IsNullOrWhiteSpace($scriptContent)) {
+				$lblStatus.Text = "Status: Scripts not available"
+			} else {
+				$lblStatus.Text = "Status: Mapping fallback to Std-Install.ps1"
+			}
+		} else {
+			$lblStatus.Text = "Status: Mapping -> $matchingScript"
+		}
+
+		# Inject chosen folder name
+		if ($scriptContent) {
+			$scriptContent = $scriptContent -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`""
+			$txtScript.Text = $scriptContent
+
+			# Update current script file tracking
+			$script:currentScriptFile = Join-Path $wsbDir "$scriptName.ps1"
+
+			# Reset original content for default scripts (cannot be saved)
+			$script:originalScriptContent = $null
+
+			# Update Save button state
+			if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
+				$btnSaveScript.Enabled = $false
+			} else {
+				$btnSaveScript.Enabled = $true
+			}
+		} else {
+			$txtScript.Text = ""
+			$script:currentScriptFile = $null
+			$btnSaveScript.Enabled = $false
+			$lblStatus.Text = "Status: Script not available"
+		}
+	}
+}
 # Helper function to apply theme to a dialog form
 function global:Set-ThemedDialog {
 	<#
@@ -2353,73 +2533,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 
 			if ($folderDialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 				$selectedDir = Split-Path $folderDialog.FileName
+
+				# Use shared function to update form (folder)
 				
-				# Folder selected - use directory logic
-				$txtMapFolder.Text = $selectedDir
-				
-				# Update sandbox folder name
-				$msiFiles = Get-ChildItem -Path $selectedDir -Filter "WAU*.msi" -File -ErrorAction SilentlyContinue
-				if ($msiFiles) {
-					$txtSandboxFolderName.Text = "WAU-install"
-				} else {
-					$folderName = Split-Path $selectedDir -Leaf
-					# Check if it's a root drive (contains : or is a path like D:\)
-					if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
-						$txtSandboxFolderName.Text = $folderName
-					} else {
-						# Root drive selected (e.g., D:\) - use drive letter as folder name
-						$driveLetter = $selectedDir.TrimEnd('\').Replace(':', '')
-						if (![string]::IsNullOrWhiteSpace($driveLetter)) {
-							$txtSandboxFolderName.Text = "Drive_$driveLetter"
-						} else {
-							$txtSandboxFolderName.Text = "MappedFolder"
-						}
-					}
-				}
-				
-				# Find matching script from mappings
-				$matchingScript = Find-MatchingScript -Path $selectedDir
-				$scriptName = $matchingScript.Replace('.ps1', '')
-
-				# Load script using the new dynamic loading function
-				$scriptContent = Get-DefaultScriptContent -ScriptName $scriptName -WsbDir $wsbDir
-
-				# Fallback to Installer if script not found
-				if ([string]::IsNullOrWhiteSpace($scriptContent)) {
-					$scriptContent = Get-DefaultScriptContent -ScriptName "Std-Install" -WsbDir $wsbDir
-					$scriptName = "Std-Install"
-					if ([string]::IsNullOrWhiteSpace($scriptContent)) {
-						$lblStatus.Text = "Status: Scripts not available"
-					} else {
-						$lblStatus.Text = "Status: Mapping fallback to Std-Install.ps1"
-					}
-				} else {
-					$lblStatus.Text = "Status: Mapping -> $matchingScript"
-				}
-
-				# Inject chosen folder name
-				if ($scriptContent) {
-					$scriptContent = $scriptContent -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`""
-					$txtScript.Text = $scriptContent
-
-					# Update current script file tracking
-					$script:currentScriptFile = Join-Path $wsbDir "$scriptName.ps1"
-
-					# Reset original content for default scripts (cannot be saved)
-					$script:originalScriptContent = $null
-
-					# Update Save button state
-					if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
-						$btnSaveScript.Enabled = $false
-					} else {
-						$btnSaveScript.Enabled = $true
-					}
-				} else {
-					$txtScript.Text = ""
-					$script:currentScriptFile = $null
-					$btnSaveScript.Enabled = $false
-					$lblStatus.Text = "Status: Script not available"
-				}
+Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
 			}
 		})
 		$form.Controls.Add($btnBrowse)
@@ -2456,87 +2573,10 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
 				$selectedPath = $fileDialog.FileName
-				$selectedDir = [System.IO.Path]::GetDirectoryName($selectedPath)
 				$selectedFile = [System.IO.Path]::GetFileName($selectedPath)
-				
-				# File selected - use its directory
-				$txtMapFolder.Text = $selectedDir
-				
-				# Update sandbox folder name based on directory only (no WAU detection)
-				$folderName = Split-Path $selectedDir -Leaf
-				# Check if it's a root drive (contains : or is a path like D:\)
-				if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
-					$txtSandboxFolderName.Text = $folderName
-				} else {
-					# Root drive selected (e.g., D:\) - use drive letter as folder name
-					$driveLetter = $selectedDir.TrimEnd('\').Replace(':', '')
-					if (![string]::IsNullOrWhiteSpace($driveLetter)) {
-						$txtSandboxFolderName.Text = "Drive_$driveLetter"
-					} else {
-						$txtSandboxFolderName.Text = "MappedFolder"
-					}
-				}
-				
-			# Generate script for selected file directly using Std-File.ps1
-			$txtScript.Text = @"
-`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
-& "`$env:USERPROFILE\Desktop\SandboxTest\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$selectedFile"
-"@
 
-			$lblStatus.Text = "Status: File selected -> $selectedFile (using Std-File.ps1)"
-
-			# Store selected file for re-evaluation when checkboxes change
-			$script:currentSelectedFile = $selectedFile
-
-			# Auto-select Python package if .py file detected
-			if ($selectedFile -like "*.py") {
-				$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-				if ($winGetFeaturesEnabled) {
-					# WinGet is available - check if Python package list exists
-					$pythonPackageName = "Python"
-
-					if ($cmbInstallPackages.Items -contains $pythonPackageName) {
-						# Python package list exists - auto-select it
-						$cmbInstallPackages.SelectedItem = $pythonPackageName
-						$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
-					} else {
-						# Python package list doesn't exist - show warning
-						$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
-					}
-				} elseif ($chkSkipWinGet.Checked) {
-					# Skip WinGet is enabled - show warning
-					$lblStatus.Text = "Status: .py selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-				} else {
-					# Networking disabled - show warning
-					$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
-				}
-			}
-
-			# Auto-select AutoHotkey package if .ahk file detected
-			if ($selectedFile -like "*.ahk") {
-				$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-				if ($winGetFeaturesEnabled) {
-					# WinGet is available - check if AHK package list exists
-					$ahkPackageName = "AHK"
-
-					if ($cmbInstallPackages.Items -contains $ahkPackageName) {
-						# AHK package list exists - auto-select it
-						$cmbInstallPackages.SelectedItem = $ahkPackageName
-						$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
-					} else {
-						# AHK package list doesn't exist - show warning
-						$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
-					}
-				} elseif ($chkSkipWinGet.Checked) {
-					# Skip WinGet is enabled - show warning
-					$lblStatus.Text = "Status: .ahk selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-				} else {
-					# Networking disabled - show warning
-					$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
-				}
-			}
+				# Use shared function to update form (file)
+				Update-FormFromSelection -SelectedPath $selectedPath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
 			}
 		})
 		$form.Controls.Add($btnBrowseFile)
@@ -3575,17 +3615,19 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				$this.PerformLayout()  # Force layout refresh
 			}
 
-			# Set initial paths from context menu parameters (simple text assignment only)
+			# Set initial paths from context menu parameters (and process them)
 			if ($script:InitialFolderPath -and (Test-Path $script:InitialFolderPath)) {
-				$txtFolder.Text = $script:InitialFolderPath
-			}
+				# Folder selected from context menu
+				Update-FormFromSelection -SelectedPath $script:InitialFolderPath -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+		}
 			if ($script:InitialFilePath -and (Test-Path $script:InitialFilePath)) {
-				$txtFile.Text = $script:InitialFilePath
-				# Also set folder path for file context
-				if (-not $txtFolder.Text) {
-					$txtFolder.Text = Split-Path $script:InitialFilePath -Parent
-				}
-			}
+				# File selected from context menu
+				$selectedFile = [System.IO.Path]::GetFileName($script:InitialFilePath)
+				Update-FormFromSelection -SelectedPath $script:InitialFilePath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+		}
+
+
+
 		})
 
 		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
@@ -3880,3 +3922,4 @@ if ($dialogResult.Wait) {
 }
 
 exit
+
