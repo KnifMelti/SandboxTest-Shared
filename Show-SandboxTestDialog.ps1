@@ -272,13 +272,13 @@ function Show-PackageListEditor {
 		$listPath = if ($ListName) { Join-Path (Join-Path $Script:WorkingDir "wsb") "$ListName.txt" } else { $null }
 	}
 
-	# Variable to track original content for change detection
-	$originalContent = ""
+	# Variable to track original content for change detection (script scope for event handlers)
+	$script:editorOriginalContent = ""
 
 	if ($listPath -and (Test-Path $listPath)) {
 		try {
-			$originalContent = (Get-Content -Path $listPath -Raw).Trim()
-			$txtPackages.Text = $originalContent
+			$script:editorOriginalContent = (Get-Content -Path $listPath -Raw).Trim()
+			$txtPackages.Text = $script:editorOriginalContent
 		}
 		catch {
 			[System.Windows.Forms.MessageBox]::Show("Error loading: $($_.Exception.Message)", "Load Error", "OK", "Error")
@@ -366,7 +366,7 @@ Comments: Lines starting with # are ignored.
 			Set-Content -Path $listPath -Value $packageContent -Encoding UTF8
 
 			# Update original content and disable Save button
-			$originalContent = $packageContent
+			$script:editorOriginalContent = $packageContent
 			$btnSave.Enabled = $false
 
 			$script:__editorReturn = @{
@@ -399,7 +399,7 @@ Comments: Lines starting with # are ignored.
 	# Add TextChanged event to enable/disable Save button based on changes
 	$txtPackages.Add_TextChanged({
 		$currentContent = $txtPackages.Text.Trim()
-		$hasChanged = ($currentContent -ne $originalContent)
+		$hasChanged = ($currentContent -ne $script:editorOriginalContent)
 		$btnSave.Enabled = $hasChanged
 	})
 
@@ -2404,6 +2404,9 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 					# Update current script file tracking
 					$script:currentScriptFile = Join-Path $wsbDir "$scriptName.ps1"
 
+					# Reset original content for default scripts (cannot be saved)
+					$script:originalScriptContent = $null
+
 					# Update Save button state
 					if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
 						$btnSaveScript.Enabled = $false
@@ -3221,8 +3224,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$scriptContent = Get-DefaultScriptContent -ScriptName $selectedScriptName -WsbDir $wsbDir
 			if ($scriptContent) {
 				$txtScript.Text = ($scriptContent -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`"")
+				# Reset original content for default scripts
+				$script:originalScriptContent = $null
 			} else {
 				$txtScript.Text = ""
+				$script:originalScriptContent = $null
 				# Override status to show script is missing
 				$initialStatus = "Warning: $selectedScriptName.ps1 not available"
 			}
@@ -3237,8 +3243,11 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 			$scriptContent = Get-DefaultScriptContent -ScriptName "Std-Install" -WsbDir $wsbDir
 			if ($scriptContent) {
 				$txtScript.Text = $scriptContent
+				# Reset original content for default scripts
+				$script:originalScriptContent = $null
 			} else {
 				$txtScript.Text = ""
+				$script:originalScriptContent = $null
 				# Override status to show script is missing
 				$initialStatus = "Warning: Std-Install.ps1 not available"
 			}
