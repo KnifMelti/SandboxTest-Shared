@@ -681,8 +681,20 @@ $notepadPPConfig | Out-File -FilePath (Join-Path $notepadPPConfigFolder "config.
             # Replace $SandboxFolderName placeholder value only (not the variable name itself)
             # Pattern matches: $SandboxFolderName = "AnyValue"
             # Replaces with: $SandboxFolderName = "ActualFolderName"
-            $scriptText = $scriptText -replace '(\$SandboxFolderName\s*=\s*")[^"]*(")', "`$1$sandboxLeaf`$2"
+            # Find the pattern and replace it directly without regex interpretation
+            if ($scriptText -match '\$SandboxFolderName\s*=\s*"[^"]*"') {
+                $oldPattern = $matches[0]
+                $newValue = "`$SandboxFolderName = `"$sandboxLeaf`""
+                $scriptText = $scriptText.Replace($oldPattern, $newValue)
+            }
 
+            # Or escape special regex characters in $sandboxLeaf
+            # $escapedSandboxLeaf = [regex]::Escape($sandboxLeaf)
+            # $scriptText = $scriptText -replace '(\$SandboxFolderName\s*=\s*")[^"]*(")', "`$1$escapedSandboxLeaf`$2"
+
+            # Old buggy replacement (left for reference)
+            # $scriptText = $scriptText -replace '(\$SandboxFolderName\s*=\s*")[^"]*(")', "`$1$sandboxLeaf`$2"
+			
             $containsWAUInstall = $scriptText -match 'InstallWSB\.cmd'
 
             if ($containsWAUInstall) {

@@ -3643,40 +3643,34 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			# Capture WorkingDir in local variable for use in scriptblocks
 			$localWorkingDir = $Script:WorkingDir
 
-			# Define inline helper functions to avoid loading Update-StartMenuShortcut.ps1 (prevents loop)
-			$testContextMenu = {
-				# Use reg.exe instead of Test-Path to avoid performance issues with HKCU:\Software\Classes\*
-				# Use Start-Process to suppress stderr output in Windows Forms
-				$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
-				$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
-
-				# Check folder key
+			# Helper function to test registry key existence using reg.exe
+			$testRegKey = {
+				param([string]$KeyPath)
 				$psi = New-Object System.Diagnostics.ProcessStartInfo
 				$psi.FileName = 'reg.exe'
-				$psi.Arguments = "query `"$folderKeyReg`""
+				$psi.Arguments = "query `"$KeyPath`""
 				$psi.RedirectStandardOutput = $true
 				$psi.RedirectStandardError = $true
 				$psi.UseShellExecute = $false
 				$psi.CreateNoWindow = $true
-				$p = New-Object System.Diagnostics.Process
-				$p.StartInfo = $psi
-				$p.Start() | Out-Null
+				$p = [System.Diagnostics.Process]::Start($psi)
 				$output = $p.StandardOutput.ReadToEnd()
 				$p.WaitForExit()
-				$folderExists = $output -match 'SandboxStart'
+				return ($output -match 'SandboxStart')
+			}
 
-				# Check file key
-				$psi.Arguments = "query `"$fileKeyReg`""
-				$p = New-Object System.Diagnostics.Process
-				$p.StartInfo = $psi
-				$p.Start() | Out-Null
-				$output = $p.StandardOutput.ReadToEnd()
-				$p.WaitForExit()
-				$fileExists = $output -match 'SandboxStart'
-
+			# Test if context menu integration is installed
+			$testContextMenu = {
+				$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
+				$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+				
+				$folderExists = & $testRegKey $folderKeyReg
+				$fileExists = & $testRegKey $fileKeyReg
+				
 				return ($folderExists -and $fileExists)
 			}
 
+			# Update context menu integration
 			$updateContextMenu = {
 				param([string]$WorkingDir, [bool]$Remove)
 
@@ -3686,41 +3680,20 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					$scriptPath = Join-Path $WorkingDir 'SandboxStart.ps1'
 					$iconPath = Join-Path $WorkingDir 'startmenu-icon.ico'
 					$folderKey = 'HKCU:\Software\Classes\Directory\shell\SandboxStart'
+					$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
+					$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
 
 					if ($Remove) {
 						Write-Verbose "Removing context menu entries..."
 
-						# Use reg.exe for checking existence to avoid performance issues with * in path
-						$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
-						$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
-
-						# Check and remove folder context menu
-						# Check folder key with Start-Process to suppress stderr
-						$psi = New-Object System.Diagnostics.ProcessStartInfo
-						$psi.FileName = 'reg.exe'
-						$psi.Arguments = "query `"$folderKeyReg`""
-						$psi.RedirectStandardOutput = $true
-						$psi.RedirectStandardError = $true
-						$psi.UseShellExecute = $false
-						$psi.CreateNoWindow = $true
-						$p = New-Object System.Diagnostics.Process
-						$p.StartInfo = $psi
-						$p.Start() | Out-Null
-						$output = $p.StandardOutput.ReadToEnd()
-						$p.WaitForExit()
-						if ($output -match 'SandboxStart') {
+						# Remove folder context menu (can use Remove-Item for non-* paths)
+						if (& $testRegKey $folderKeyReg) {
 							Remove-Item $folderKey -Recurse -Force -ErrorAction Stop
 							Write-Verbose "Removed folder key"
 						}
 
-						# Check and remove file context menu (use reg.exe delete to avoid Remove-Item hang on *)
-						$psi.Arguments = "query `"$fileKeyReg`""
-						$p = New-Object System.Diagnostics.Process
-						$p.StartInfo = $psi
-						$p.Start() | Out-Null
-						$output = $p.StandardOutput.ReadToEnd()
-						$p.WaitForExit()
-						if ($output -match 'SandboxStart') {
+						# Remove file context menu (use reg.exe delete for * path to avoid hang)
+						if (& $testRegKey $fileKeyReg) {
 							$null = reg.exe delete "$fileKeyReg" /f 2>&1
 							Write-Verbose "Removed file key"
 						}
@@ -3734,62 +3707,45 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 						Write-Verbose "Creating new folder key: $folderKey"
 						$null = New-Item -Path $folderKey -Force -ErrorAction Stop
 					}
-					Write-Verbose "Setting folder key default value..."
 					$null = New-ItemProperty -Path $folderKey -Name '(Default)' -Value 'Test in Windows Sandbox' -PropertyType String -Force -ErrorAction Stop
-					Write-Verbose "Setting folder key icon..."
 					$null = New-ItemProperty -Path $folderKey -Name 'Icon' -Value $iconPath -PropertyType String -Force -ErrorAction Stop
 
 					$folderCommandKey = "$folderKey\command"
-					Write-Verbose "Creating folder command key: $folderCommandKey"
 					if (-not (Test-Path $folderCommandKey)) {
 						$null = New-Item -Path $folderCommandKey -Force -ErrorAction Stop
 					}
-					Write-Verbose "Setting folder command value..."
 					$null = New-ItemProperty -Path $folderCommandKey -Name '(Default)' -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -FolderPath `"%V`"" -PropertyType String -Force -ErrorAction Stop
 					Write-Verbose "Folder context menu created"
 
-					# Create file context menu using PowerShell registry provider (reg.exe cannot handle * in path)
+					# Create file context menu using reg.exe (PowerShell cmdlets hang on * path)
 					Write-Verbose "Creating file context menu..."
-					# Use reg.exe for ALL operations on * key (PowerShell cmdlets hang on *)
-					$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
 					$fileCommandKeyReg = "$fileKeyReg\command"
-
-					Write-Verbose "Creating registry key: $fileKeyReg"
-					$null = reg.exe add "$fileKeyReg" /f 2>&1
-
-					Write-Verbose "Setting file key default value..."
-					$null = reg.exe add "$fileKeyReg" /ve /d "Test in Windows Sandbox" /f 2>&1
-
-					Write-Verbose "Setting file key icon..."
-					$null = reg.exe add "$fileKeyReg" /v Icon /d "$iconPath" /f 2>&1
-
-					Write-Verbose "Creating registry key: $fileCommandKeyReg"
-					$null = reg.exe add "$fileCommandKeyReg" /f 2>&1
-
-					Write-Verbose "Setting file command value..."
 					$fileCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \`"$scriptPath\`" -FilePath \`"%1\`""
+
+					# Create all registry entries in batch
+					$null = reg.exe add "$fileKeyReg" /ve /d "Test in Windows Sandbox" /f 2>&1
+					$null = reg.exe add "$fileKeyReg" /v Icon /d "$iconPath" /f 2>&1
 					$null = reg.exe add "$fileCommandKeyReg" /ve /d "$fileCommand" /f 2>&1
 					Write-Verbose "File context menu created"
 
 					return $true
 				}
 				catch {
-					$errorMsg = "updateContextMenu failed: $_
-Stack Trace: $($_.ScriptStackTrace)"
+					$errorMsg = "updateContextMenu failed: $_`nStack Trace: $($_.ScriptStackTrace)"
 					Write-Error $errorMsg
 					[System.Windows.Forms.MessageBox]::Show($errorMsg, 'Context Menu Error', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
 					return $false
 				}
 			}
 
+			# Create menu item
 			$menuContextIntegration = New-Object System.Windows.Forms.ToolStripMenuItem
 			$isInstalled = & $testContextMenu
 
-			if ($isInstalled) {
-				$menuContextIntegration.Text = "Disable Context Menu Integration"
-			}
-			else {
-				$menuContextIntegration.Text = "Enable Context Menu Integration"
+			$menuContextIntegration.Text = if ($isInstalled) {
+				"Disable Context Menu Integration"
+			} else {
+				"Enable Context Menu Integration"
 			}
 
 			$menuContextIntegration.Add_Click({
