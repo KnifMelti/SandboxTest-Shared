@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Shared helper functions for SandboxStart
 
@@ -1222,6 +1222,15 @@ function Sync-GitHubScriptsSelective {
 				$localPath = Join-Path $LocalFolder $file.name
 
 				if ($isAlwaysSync) {
+				# Check for custom override header before overwriting Std-File.ps1
+				if ($file.name -eq 'Std-File.ps1' -and (Test-Path $localPath)) {
+					$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
+					if ($localContent -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+						Write-Verbose "Skipping Std-File.ps1 sync (custom override detected)"
+						$skippedCount++
+						continue
+					}
+				}
 					# Always-sync files: Download and compare, overwrite if different
 					# Download from raw URL
 					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
