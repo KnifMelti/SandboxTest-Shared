@@ -555,6 +555,18 @@ function global:Update-FormFromSelection {
 
 			# Disable Save button for wrapper (use Load... to edit actual script)
 			$btnSaveScript.Enabled = $false
+		} else {
+			# Generate default wrapper script for Std-File.ps1
+			$txtScript.Text = @"
+`$SandboxFolderName = "$($txtSandboxFolderName.Text)"
+& "`$env:USERPROFILE\Desktop\SandboxTest\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$FileName"
+"@
+
+			$lblStatus.Text = "Status: File selected -> $FileName (using Std-File.ps1)"
+
+			# Disable Save button (wrapper script is auto-generated)
+			$script:currentScriptFile = $null
+			$btnSaveScript.Enabled = $false
 		}
 
 		# Store selected file for re-evaluation when checkboxes change
@@ -609,10 +621,6 @@ function global:Update-FormFromSelection {
 				$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
 			}
 		}
-
-		# Reset tracking variables
-		$script:currentScriptFile = $null
-		$btnSaveScript.Enabled = $false
 	} else {
 		# Folder selected - find matching script from mappings
 		$matchingScript = Find-MatchingScript -Path $selectedDir
