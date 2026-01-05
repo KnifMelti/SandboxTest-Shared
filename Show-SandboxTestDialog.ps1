@@ -672,7 +672,14 @@ function global:Update-FormFromSelection {
 			$script:originalScriptContent = $null
 
 			# Update Save button state
-			if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
+			# Check if loaded script has CUSTOM OVERRIDE header
+			$hasCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+			$isDefaultScript = $false
+			if (-not $hasCustomOverride) {
+				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
+			}
+
+			if ($isDefaultScript) {
 				$btnSaveScript.Enabled = $false
 			} else {
 				$btnSaveScript.Enabled = $true
@@ -3472,30 +3479,45 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$form.Controls.Add($btnSaveScript)
 
 		# Set initial Save button state based on current script
-		if ($script:currentScriptFile -and (Test-IsDefaultScript -FilePath $script:currentScriptFile)) {
+		if ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
 			$btnSaveScript.Enabled = $false
-		} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
-			$btnSaveScript.Enabled = $false
+		} elseif ($script:currentScriptFile) {
+			# Check if script has CUSTOM OVERRIDE header
+			$hasCustomOverride = $txtScript.Text -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+			$isDefaultScript = $false
+			if (-not $hasCustomOverride) {
+				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
+			}
+			$btnSaveScript.Enabled = -not $isDefaultScript
 		}
 
 		# Add TextChanged event to update Save button state dynamically
 		$txtScript.Add_TextChanged({
-			if (Test-IsDefaultScript -FilePath $script:currentScriptFile) {
-				# Default scripts cannot be saved
-				$btnSaveScript.Enabled = $false
-			} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
-				# Empty script cannot be saved
-				$btnSaveScript.Enabled = $false
-			} elseif ([string]::IsNullOrWhiteSpace($script:currentScriptFile)) {
-				# No file path - must use Save As
-				$btnSaveScript.Enabled = $false
-			} else {
-				# Enable Save button only if content has changed
-				$currentContent = $txtScript.Text
-				$hasChanged = ($null -eq $script:originalScriptContent) -or ($currentContent -ne $script:originalScriptContent)
-				$btnSaveScript.Enabled = $hasChanged
-			}
-		})
+		# Check if current script has CUSTOM OVERRIDE header
+		$currentContent = $txtScript.Text
+		$hasCustomOverride = $currentContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+
+		# Check if file is a default script (but allow custom override to bypass this)
+		$isDefaultScript = $false
+		if (-not $hasCustomOverride) {
+			$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
+		}
+
+		if ($isDefaultScript) {
+			# Default scripts without CUSTOM OVERRIDE cannot be saved
+			$btnSaveScript.Enabled = $false
+		} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
+			# Empty script cannot be saved
+			$btnSaveScript.Enabled = $false
+		} elseif ([string]::IsNullOrWhiteSpace($script:currentScriptFile)) {
+			# No file path - must use Save As
+			$btnSaveScript.Enabled = $false
+		} else {
+			# Enable Save button only if content has changed
+			$hasChanged = ($null -eq $script:originalScriptContent) -or ($currentContent -ne $script:originalScriptContent)
+			$btnSaveScript.Enabled = $hasChanged
+		}
+	})
 
 
 		$btnSaveAsScript = New-Object System.Windows.Forms.Button
