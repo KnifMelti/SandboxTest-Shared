@@ -3375,15 +3375,29 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 						$txtScript.Text = $txtScript.Text -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$currentFolderName`""
 					}
 
-					# Store original content for change tracking
-					$script:originalScriptContent = $txtScript.Text
+				# Store original content for change tracking
+				$script:originalScriptContent = $txtScript.Text
 
-					# Update Save button state for loaded file (disabled until changes are made)
+				# Update Save button state for loaded file
+				# Enable Save button if:
+				# 1. File has CUSTOM OVERRIDE header (custom script - always editable)
+				# 2. File is NOT a default script (Std-*.ps1 without custom header)
+				$isCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+				$isDefaultScript = Test-IsDefaultScript -FilePath $openFileDialog.FileName
+
+				if ($isCustomOverride -or -not $isDefaultScript) {
+					$btnSaveScript.Enabled = $true
+				} else {
 					$btnSaveScript.Enabled = $false
+				}
 
-					# Update status to show loaded script
-					$scriptFileName = [System.IO.Path]::GetFileName($openFileDialog.FileName)
+				# Update status to show loaded script
+				$scriptFileName = [System.IO.Path]::GetFileName($openFileDialog.FileName)
+				if ($isCustomOverride) {
+					$lblStatus.Text = "Status: Loaded $scriptFileName (CUSTOM)"
+				} else {
 					$lblStatus.Text = "Status: Loaded $scriptFileName"
+				}
 				}
 				catch {
 					[System.Windows.Forms.MessageBox]::Show("Error loading script: $($_.Exception.Message)", "Load Error", "OK", "Error")
@@ -3566,10 +3580,10 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				SandboxFolderName = $txtSandboxFolderName.Text
 				WinGetVersion = $cmbWinGetVersion.Text
 				InstallPackageList = if ($cmbInstallPackages.SelectedItem -and
-				                       $cmbInstallPackages.SelectedItem -ne "" -and
-				                       $cmbInstallPackages.SelectedItem -ne "[Create new list...]") {
-				                       $cmbInstallPackages.SelectedItem
-				                   } else { "" }
+									$cmbInstallPackages.SelectedItem -ne "" -and
+									$cmbInstallPackages.SelectedItem -ne "[Create new list...]") {
+									$cmbInstallPackages.SelectedItem
+								} else { "" }
 				Prerelease = $chkPrerelease.Checked
 				Clean = $chkClean.Checked
 				Verbose = $chkVerbose.Checked
