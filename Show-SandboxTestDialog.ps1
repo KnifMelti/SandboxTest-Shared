@@ -541,45 +541,19 @@ function global:Update-FormFromSelection {
 		}
 
 		if ($useCustom) {
-			# Load custom Std-File.ps1 content and inject variables
-			$scriptContent = $stdFileContent -replace '\$SandboxFolderName\s*=\s*"[^"]*"', "`$SandboxFolderName = `"$($txtSandboxFolderName.Text)`""
-
-			# Replace placeholder FileName if exists, otherwise append parameter
-			if ($scriptContent -match '\$FileName\s*=\s*"[^"]*"') {
-				$scriptContent = $scriptContent -replace '\$FileName\s*=\s*"[^"]*"', "`$FileName = `"$FileName`""
-			} else {
-				# Append FileName parameter at the top (after CUSTOM OVERRIDE header and comments)
-				# Find the first non-comment, non-blank line to insert before
-				$lines = $scriptContent -split "`r`n"
-				$insertIndex = 0
-				for ($i = 0; $i -lt $lines.Count; $i++) {
-					$line = $lines[$i].Trim()
-					if ($line -and $line -notmatch '^#') {
-						$insertIndex = $i
-						break
-					}
-				}
-				$lines = @($lines[0..($insertIndex-1)]) + "`$FileName = `"$FileName`"" + @($lines[$insertIndex..($lines.Count-1)])
-				$scriptContent = $lines -join "`r`n"
-			}
-
-			$txtScript.Text = $scriptContent
-			$lblStatus.Text = "Status: File selected -> $FileName (using CUSTOM Std-File.ps1)"
-
-			# Enable Save button for custom script
-			$script:currentScriptFile = $stdFilePath
-			$btnSaveScript.Enabled = $true
-		} else {
-			# Generate default wrapper script
+			# Custom Std-File.ps1 exists - create wrapper to call it
+			# The wrapper ensures param() blocks work correctly
 			$txtScript.Text = @"
 `$SandboxFolderName = "$($txtSandboxFolderName.Text)"
 & "`$env:USERPROFILE\Desktop\SandboxTest\Std-File.ps1" -SandboxFolderName `$SandboxFolderName -FileName "$FileName"
 "@
 
-			$lblStatus.Text = "Status: File selected -> $FileName (using Std-File.ps1)"
+			$lblStatus.Text = "Status: File selected -> $FileName (using CUSTOM Std-File.ps1)"
 
-			# Disable Save button (wrapper script is auto-generated)
-			$script:currentScriptFile = $null
+			# Set current script file so user can edit via Load... button
+			$script:currentScriptFile = $stdFilePath
+
+			# Disable Save button for wrapper (use Load... to edit actual script)
 			$btnSaveScript.Enabled = $false
 		}
 
