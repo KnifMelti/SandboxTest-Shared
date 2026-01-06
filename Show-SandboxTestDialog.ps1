@@ -621,6 +621,31 @@ function global:Update-FormFromSelection {
 				$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
 			}
 		}
+
+		# Auto-select AutoIt package if .au3 file detected
+		if ($FileName -like "*.au3") {
+			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
+
+			if ($winGetFeaturesEnabled) {
+				# WinGet is available - check if AU3 package list exists
+				$au3PackageName = "AU3"
+
+				if ($cmbInstallPackages.Items -contains $au3PackageName) {
+					# AU3 package list exists - auto-select it
+					$cmbInstallPackages.SelectedItem = $au3PackageName
+					$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
+				} else {
+					# AU3 package list doesn't exist - show warning
+					$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
+				}
+			} elseif ($chkSkipWinGet.Checked) {
+				# Skip WinGet is enabled - show warning
+				$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+			} else {
+				# Networking disabled - show warning
+				$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
+			}
+		}
 	} else {
 		# Folder selected - find matching script from mappings
 		$matchingScript = Find-MatchingScript -Path $selectedDir
@@ -2603,7 +2628,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
-			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.py;*.js)|*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.py;*.js|All Files (*.*)|*.*"
+			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.au3;*.py;*.js)|*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.au3;*.py;*.js|All Files (*.*)|*.*"
 			$fileDialog.InitialDirectory = $txtMapFolder.Text
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
@@ -2944,6 +2969,31 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 						$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
 					}
 				}
+
+				# Auto-select AutoIt package if .au3 file detected
+				if ($selectedFile -like "*.au3") {
+					$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
+
+					if ($winGetFeaturesEnabled) {
+						# WinGet is available - check if AU3 package list exists
+						$au3PackageName = "AU3"
+
+						if ($cmbInstallPackages.Items -contains $au3PackageName) {
+							# AU3 package list exists - auto-select it
+							$cmbInstallPackages.SelectedItem = $au3PackageName
+							$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
+						} else {
+							# AU3 package list doesn't exist - show warning
+							$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
+						}
+					} elseif ($chkSkipWinGet.Checked) {
+						# Skip WinGet is enabled - show warning
+						$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+					} else {
+						# Networking disabled - show warning
+						$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
+					}
+				}
 			}
 		}
 	})
@@ -3057,6 +3107,30 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
 				}
 			}
+	# Auto-select AutoIt package if .au3 file detected
+	if ($selectedFile -like "*.au3") {
+		$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
+
+		if ($winGetFeaturesEnabled) {
+			# WinGet is available - check if AU3 package list exists
+			$au3PackageName = "AU3"
+
+			if ($cmbInstallPackages.Items -contains $au3PackageName) {
+				# AU3 package list exists - auto-select it
+				$cmbInstallPackages.SelectedItem = $au3PackageName
+				$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
+			} else {
+				# AU3 package list doesn't exist - show warning
+				$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
+			}
+		} elseif ($chkSkipWinGet.Checked) {
+			# Skip WinGet is enabled - show warning
+			$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+		} else {
+			# Networking disabled - show warning
+			$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
+		}
+	}
 		}
 		})
 
