@@ -129,25 +129,46 @@ function Get-PackageLists {
 	.DESCRIPTION
 	Scans the wsb directory for .txt files (excluding script-mappings.txt)
 	and returns their base names for use in the package list dropdown.
+	Filters out deleted lists (state=0 in package-lists.ini) and ensures
+	AutoInstall appears first.
 
 	.OUTPUTS
 	Array of package list names (without .txt extension)
 	#>
 
 	$packageListDir = Join-Path $Script:WorkingDir "wsb"
+	$config = Get-PackageListConfig -WorkingDir $Script:WorkingDir
 	$lists = @()
+	$hasAutoInstall = $false
 
 	if (Test-Path $packageListDir) {
 		$txtFiles = Get-ChildItem -Path $packageListDir -Filter "*.txt" -File -ErrorAction SilentlyContinue
 		foreach ($file in $txtFiles) {
 			# Exclude script-mappings.txt from package lists
 			if ($file.Name -ne "script-mappings.txt") {
-				$lists += $file.BaseName
+				$listName = $file.BaseName
+
+				# Filter out deleted lists (state=0 in .ini)
+				if ($config.ContainsKey($listName) -and $config[$listName] -eq 0) {
+					continue
+				}
+
+				if ($listName -eq "AutoInstall") {
+					$hasAutoInstall = $true
+				} else {
+					$lists += $listName
+				}
 			}
 		}
 	}
 
-	return $lists | Sort-Object
+	# Sort regular lists, but prepend AutoInstall
+	$sortedLists = $lists | Sort-Object
+	if ($hasAutoInstall) {
+		return @('AutoInstall') + $sortedLists
+	} else {
+		return $sortedLists
+	}
 }
 
 function Get-PackageListTooltip {
@@ -277,7 +298,12 @@ function Show-PackageListEditor {
 
 	if ($listPath -and (Test-Path $listPath)) {
 		try {
-			$script:editorOriginalContent = (Get-Content -Path $listPath -Raw).Trim()
+			# Don't trim - preserve content including comments and empty lines
+			$script:editorOriginalContent = Get-Content -Path $listPath -Raw
+			# Remove trailing newline only (not all whitespace)
+			if ($script:editorOriginalContent -and $script:editorOriginalContent.EndsWith("`r`n")) {
+				$script:editorOriginalContent = $script:editorOriginalContent.TrimEnd("`r`n")
+			}
 			$txtPackages.Text = $script:editorOriginalContent
 		}
 		catch {
@@ -2409,6 +2435,28 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$wsbDir = Join-Path $Script:WorkingDir "wsb"
 		Get-ScriptMappings | Out-Null  # Creates directory, mappings file, and migrates old names
 
+		# Initialize package list migration (one-time tracking)
+		Initialize-PackageListMigration -WorkingDir $Script:WorkingDir
+
+		# Ensure AutoInstall.txt exists
+		$autoInstallPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "AutoInstall.txt"
+		if (-not (Test-Path $autoInstallPath)) {
+			$autoInstallContent = @"
+# AutoInstall Package List (Local Only)
+# This list is installed FIRST, before any selected package lists
+# Add WinGet package IDs (one per line) to install automatically
+# Example: Notepad++.Notepad++
+#
+# Usage:
+# - Always runs first (even if not selected)
+# - Can be manually selected to ONLY install these packages
+# - Cannot be deleted or synced from GitHub
+
+"@
+			Set-Content -Path $autoInstallPath -Value $autoInstallContent -Encoding UTF8
+			Write-Verbose "Created AutoInstall.txt"
+		}
+
 		# Download/update default scripts from GitHub
 		Write-Host "Checking default scripts...`t" -NoNewline -ForegroundColor Cyan
 		$initialStatus = "Checking default scripts from GitHub"
@@ -2721,7 +2769,11 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$cmbInstallPackages.SelectedIndex = 0
 		} else {
 			foreach ($list in $packageLists) {
-				[void]$cmbInstallPackages.Items.Add($list)
+				if ($list -eq "AutoInstall") {
+					[void]$cmbInstallPackages.Items.Add([char]0x2699 + " $list")  # âš™ AutoInstall
+				} else {
+					[void]$cmbInstallPackages.Items.Add($list)
+				}
 			}
 			[void]$cmbInstallPackages.Items.Add("[Create new list...]")
 			$cmbInstallPackages.SelectedIndex = 0
@@ -2743,7 +2795,11 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 
 					$lists = Get-PackageLists
 					foreach ($list in $lists) {
-						[void]$this.Items.Add($list)
+						if ($list -eq "AutoInstall") {
+							[void]$this.Items.Add([char]0x2699 + " $list")  # âš™ AutoInstall
+						} else {
+							[void]$this.Items.Add($list)
+						}
 					}
 					[void]$this.Items.Add("[Create new list...]")
 
@@ -2755,6 +2811,67 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			}
 		})
 
+
+		# KeyDown event for Delete key
+		$cmbInstallPackages.Add_KeyDown({
+			param($comboBox, $e)
+
+			# Check if Delete key pressed
+			if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Delete) {
+				$selectedList = $comboBox.SelectedItem
+
+				# Validation - prevent deletion of special items
+				if ($selectedList -eq "" -or
+					$selectedList -eq "[Create new list...]" -or
+					$selectedList -like "*AutoInstall*") {  # Handles both "AutoInstall" and "âš™ AutoInstall"
+					return
+				}
+
+				# Strip icon prefix if present (e.g., "âš™ AutoInstall" â†’ "AutoInstall")
+				$listName = $selectedList -replace '^[^\w]+\s*', ''
+
+				# Confirmation dialog using themed message dialog
+				$result = Show-ThemedMessageDialog -Title "Confirm Delete" `
+					-Message "Delete package list '$listName'?`n`nThis action cannot be undone." `
+					-Buttons "OKCancel" `
+					-Icon "Warning" `
+					-ParentIcon $form.Icon
+
+				if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+					# Delete file
+					$listPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "$listName.txt"
+					if (Test-Path $listPath) {
+						Remove-Item -Path $listPath -Force
+					}
+
+					# Update .ini file (set to 0)
+					Set-PackageListConfig -ListName $listName -State 0 -WorkingDir $Script:WorkingDir
+
+					# Refresh dropdown
+					$comboBox.Items.Clear()
+					[void]$comboBox.Items.Add("")
+
+					$lists = Get-PackageLists
+					foreach ($list in $lists) {
+						if ($list -eq "AutoInstall") {
+							[void]$comboBox.Items.Add([char]0x2699 + " $list")
+						} else {
+							[void]$comboBox.Items.Add($list)
+						}
+					}
+					[void]$comboBox.Items.Add("[Create new list...]")
+
+					$comboBox.SelectedIndex = 0
+					$lblStatus.Text = "Status: Package list '$listName' deleted"
+
+					# Update tooltip
+					$tooltipPackages.SetToolTip($comboBox, (Get-PackageListTooltip))
+				}
+
+				# Mark event as handled
+				$e.Handled = $true
+			}
+		})
 		$form.Controls.Add($cmbInstallPackages)
 
 		# Edit button
@@ -2771,16 +2888,24 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				return
 			}
 
-			$result = Show-PackageListEditor -ListName $selectedList
+			# Strip icon prefix if present (e.g., "⚙ AutoInstall" → "AutoInstall")
+			$listName = $selectedList -replace '^[^\w]+\s*', ''
+
+			$result = Show-PackageListEditor -ListName $listName
 
 			if ($result.DialogResult -eq 'OK') {
-				$currentSelection = $selectedList
+				# Reconstruct selection with icon if AutoInstall
+				$currentSelection = if ($listName -eq "AutoInstall") { [char]0x2699 + " $listName" } else { $listName }
 				$cmbInstallPackages.Items.Clear()
 				[void]$cmbInstallPackages.Items.Add("")
 
 				$lists = Get-PackageLists
 				foreach ($list in $lists) {
-					[void]$cmbInstallPackages.Items.Add($list)
+					if ($list -eq "AutoInstall") {
+						[void]$cmbInstallPackages.Items.Add([char]0x2699 + " $list")  # âš™ AutoInstall
+					} else {
+						[void]$cmbInstallPackages.Items.Add($list)
+					}
 				}
 				[void]$cmbInstallPackages.Items.Add("[Create new list...]")
 

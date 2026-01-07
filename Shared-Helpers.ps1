@@ -1140,7 +1140,7 @@ function Sync-GitHubScriptsSelective {
 
 	.PARAMETER AlwaysSyncPatterns
 	Array of wildcard patterns for files that should always be updated.
-	Default: @('Std-*.ps1')
+	Default: @('Std-*.ps1', 'Std-*.txt')
 
 	.PARAMETER UseCache
 	Use cached GitHub API responses (60-minute TTL)
@@ -1170,7 +1170,7 @@ function Sync-GitHubScriptsSelective {
 
 		[string]$Branch = 'master',
 
-		[string[]]$AlwaysSyncPatterns = @('Std-*.ps1'),
+		[string[]]$AlwaysSyncPatterns = @('Std-*.ps1', 'Std-*.txt'),
 
 		[switch]$UseCache
 	)
@@ -1222,15 +1222,15 @@ function Sync-GitHubScriptsSelective {
 				$localPath = Join-Path $LocalFolder $file.name
 
 				if ($isAlwaysSync) {
-				# Check for custom override header before overwriting Std-File.ps1
-				if ($file.name -eq 'Std-File.ps1' -and (Test-Path $localPath)) {
-					$localContent = Get-Content $localPath -Raw -ErrorAction SilentlyContinue
-					if ($localContent -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
-						Write-Verbose "Skipping Std-File.ps1 sync (custom override detected)"
-						$skippedCount++
-						continue
+					# Check for custom override header before syncing (applies to ALL AlwaysSyncPatterns files)
+					if (Test-Path $localPath) {
+						$firstLine = Get-Content -Path $localPath -TotalCount 1 -ErrorAction SilentlyContinue
+						if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+							Write-Verbose "Skipping sync for custom override: $($file.name)"
+							$skippedCount++
+							continue
+						}
 					}
-				}
 					# Always-sync files: Download and compare, overwrite if different
 					# Download from raw URL
 					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
@@ -1289,6 +1289,67 @@ function Sync-GitHubScriptsSelective {
 			}
 		}
 
+		# Remote cleanup: Delete obsolete files
+		# Only applies to Std-*.txt files (not Std-*.ps1 which are code)
+		# and original default lists that have been replaced
+
+		# 1. Cleanup obsolete Std-*.txt files
+		$remoteStdTxtFiles = $files | Where-Object { $_.type -eq 'file' -and $_.name -like 'Std-*.txt' } | ForEach-Object { $_.name }
+		$localStdTxtFiles = Get-ChildItem -Path $LocalFolder -Filter 'Std-*.txt' -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+
+		if ($localStdTxtFiles) {
+			$obsoleteStdFiles = $localStdTxtFiles | Where-Object { $_ -notin $remoteStdTxtFiles }
+
+			foreach ($obsoleteFile in $obsoleteStdFiles) {
+				$obsoletePath = Join-Path $LocalFolder $obsoleteFile
+				$listName = [System.IO.Path]::GetFileNameWithoutExtension($obsoleteFile)
+
+				# Check for CUSTOM OVERRIDE - preserve user modifications
+				$firstLine = Get-Content -Path $obsoletePath -TotalCount 1 -ErrorAction SilentlyContinue
+				if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+					Write-Verbose "Preserving custom override package list: $listName"
+					continue
+				}
+
+				Write-Verbose "Removing obsolete Std-* package list: $listName"
+				Remove-Item -Path $obsoletePath -Force -ErrorAction SilentlyContinue
+				Set-PackageListConfig -ListName $listName -State 0 -WorkingDir (Split-Path $LocalFolder -Parent)
+			}
+		}
+
+		# 2. Migration cleanup: Delete original default lists that have Std-* replacements
+		$workingDir = Split-Path $LocalFolder -Parent
+		$config = Get-PackageListConfig -WorkingDir $workingDir
+		$migrationKeys = $config.Keys | Where-Object { $_ -like '_OriginalDefault_*' }
+
+		foreach ($migrationKey in $migrationKeys) {
+			$originalListName = $migrationKey -replace '^_OriginalDefault_', ''
+			$originalPath = Join-Path $LocalFolder "$originalListName.txt"
+
+			# Check if file still exists locally
+			if (-not (Test-Path $originalPath)) {
+				continue  # Already deleted
+			}
+
+			# Check for CUSTOM OVERRIDE (final protection)
+			$firstLine = Get-Content -Path $originalPath -TotalCount 1 -ErrorAction SilentlyContinue
+			if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+				Write-Verbose "Preserving custom override list: $originalListName"
+				continue
+			}
+
+			# Check if Std-* replacement exists on GitHub
+			$stdReplacementName = "Std-$originalListName.txt"
+			if ($stdReplacementName -in $remoteStdTxtFiles) {
+				Write-Verbose "Removing original default list (replaced by $stdReplacementName): $originalListName"
+				Remove-Item -Path $originalPath -Force -ErrorAction SilentlyContinue
+				Set-PackageListConfig -ListName $originalListName -State 0 -WorkingDir $workingDir
+
+				# Remove migration tracking entry
+				Set-PackageListConfig -ListName $migrationKey -State 0 -WorkingDir $workingDir
+			}
+		}
+
 		# Summary
 		Write-Verbose "Sync complete: $downloadedCount downloaded, $updatedCount updated, $unchangedCount unchanged, $skippedCount skipped"
 
@@ -1301,6 +1362,210 @@ function Sync-GitHubScriptsSelective {
 		Write-Verbose "GitHub sync failed: $_"
 		# Silent fail - fallback to local files
 	}
+}
+
+#region Package List Management Functions
+
+function Get-PackageListConfig {
+	<#
+	.SYNOPSIS
+	Returns hashtable of package list states from .ini file
+
+	.DESCRIPTION
+	Reads the package-lists.ini file and returns a hashtable with list names and states.
+	Creates default .ini file if missing.
+
+	.OUTPUTS
+	Hashtable with list names as keys and state (0 or 1) as values
+	#>
+	param(
+		[string]$WorkingDir = $PWD.Path
+	)
+
+	$configPath = Join-Path (Join-Path $WorkingDir "wsb") "package-lists.ini"
+	$config = @{}
+
+	if (Test-Path $configPath) {
+		try {
+			$lines = Get-Content -Path $configPath -Encoding UTF8
+			foreach ($line in $lines) {
+				$line = $line.Trim()
+				# Skip empty lines and comments
+				if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
+					continue
+				}
+
+				# Parse key=value
+				if ($line -match '^(.+?)=(.+)$') {
+					$listName = $Matches[1].Trim()
+					$state = $Matches[2].Trim()
+					if ($state -match '^\d+$') {
+						$config[$listName] = [int]$state
+					}
+				}
+			}
+		}
+		catch {
+			Write-Warning "Failed to read package list config: $_"
+		}
+	}
+
+	return $config
+}
+
+function Set-PackageListConfig {
+	<#
+	.SYNOPSIS
+	Updates .ini file with list name and state
+
+	.PARAMETER ListName
+	Package list name
+
+	.PARAMETER State
+	State: 1 = enabled, 0 = disabled/deleted
+
+	.PARAMETER WorkingDir
+	Working directory (defaults to current directory)
+	#>
+	param(
+		[Parameter(Mandatory=$true)]
+		[string]$ListName,
+
+		[Parameter(Mandatory=$true)]
+		[ValidateRange(0,1)]
+		[int]$State,
+
+		[string]$WorkingDir = $PWD.Path
+	)
+
+	$wsbDir = Join-Path $WorkingDir "wsb"
+	if (-not (Test-Path $wsbDir)) {
+		New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
+	}
+
+	$configPath = Join-Path $wsbDir "package-lists.ini"
+	$config = Get-PackageListConfig -WorkingDir $WorkingDir
+
+	# Update or add entry
+	$config[$ListName] = $State
+
+	# Write back to file
+	try {
+		$lines = @("# Package List Configuration")
+		$lines += "# 1 = enabled, 0 = disabled/deleted"
+		$lines += ""
+
+		# Sort entries (but keep special entries at bottom)
+
+		# Force arrays to prevent issues when there's only one key
+		$specialKeys = @($config.Keys | Where-Object { $_ -like '_*' })
+		$regularKeys = @($config.Keys | Where-Object { $_ -notlike '_*' } | Sort-Object)
+
+		# Add regular keys first
+		foreach ($key in $regularKeys) {
+			$lines += "$key=$($config[$key])"
+		}
+
+		# Add special keys last
+		foreach ($key in $specialKeys) {
+			$lines += "$key=$($config[$key])"
+		}
+		Set-Content -Path $configPath -Value $lines -Encoding UTF8
+	}
+	catch {
+		Write-Warning "Failed to write package list config: $_"
+	}
+}
+
+function Initialize-PackageListConfig {
+	<#
+	.SYNOPSIS
+	Scans wsb/ folder for .txt files, creates .ini entries
+
+	.DESCRIPTION
+	Creates initial package-lists.ini file if missing and populates it
+	with all existing package lists (excluding script-mappings.txt).
+	Called on GUI startup.
+
+	.PARAMETER WorkingDir
+	Working directory (defaults to current directory)
+	#>
+	param(
+		[string]$WorkingDir = $PWD.Path
+	)
+
+	$wsbDir = Join-Path $WorkingDir "wsb"
+	$configPath = Join-Path $wsbDir "package-lists.ini"
+
+	# Only initialize if .ini doesn't exist
+	if (Test-Path $configPath) {
+		return
+	}
+
+	Write-Verbose "Initializing package list configuration"
+
+	# Get all .txt files (excluding script-mappings.txt)
+	$packageLists = @()
+	if (Test-Path $wsbDir) {
+		$txtFiles = Get-ChildItem -Path $wsbDir -Filter "*.txt" -File -ErrorAction SilentlyContinue
+		foreach ($file in $txtFiles) {
+			if ($file.Name -ne "script-mappings.txt") {
+				$packageLists += $file.BaseName
+			}
+		}
+	}
+
+	# Create .ini with all lists enabled (state=1)
+	foreach ($listName in $packageLists) {
+		Set-PackageListConfig -ListName $listName -State 1 -WorkingDir $WorkingDir
+	}
+}
+
+function Initialize-PackageListMigration {
+	<#
+	.SYNOPSIS
+	One-time migration: Records current default list names for safe cleanup
+
+	.DESCRIPTION
+	Tracks which lists existed at time of migration. These can be safely
+	deleted later when GitHub introduces Std-* replacements.
+	Only runs once (tracked via _MigrationCompleted flag in .ini).
+
+	.PARAMETER WorkingDir
+	Working directory (defaults to current directory)
+	#>
+	param(
+		[string]$WorkingDir = $PWD.Path
+	)
+
+	# Check if migration already completed
+	$config = Get-PackageListConfig -WorkingDir $WorkingDir
+	if ($config.ContainsKey('_MigrationCompleted')) {
+		return  # Already migrated
+	}
+
+	Write-Verbose "Package list migration tracking initialized"
+
+	# Define original default list names (shipped with SandboxStart)
+	$originalDefaults = @('Python', 'AHK', 'AU3', '1. Missing in WSB')
+
+	# Record which ones currently exist
+	$wsbDir = Join-Path $WorkingDir "wsb"
+	foreach ($listName in $originalDefaults) {
+		$listPath = Join-Path $wsbDir "$listName.txt"
+		if (Test-Path $listPath) {
+			# Check if it has CUSTOM OVERRIDE
+			$firstLine = Get-Content -Path $listPath -TotalCount 1 -ErrorAction SilentlyContinue
+			if ($firstLine -notmatch '^\s*#\s*CUSTOM\s+OVERRIDE') {
+				# Mark as original default (can be safely deleted during migration)
+				Set-PackageListConfig -ListName "_OriginalDefault_$listName" -State 1 -WorkingDir $WorkingDir
+				Write-Verbose "Tracked original default list: $listName"
+			}
+		}
+	}
+
+	# Mark migration as completed
+	Set-PackageListConfig -ListName '_MigrationCompleted' -State 1 -WorkingDir $WorkingDir
 }
 
 #endregion

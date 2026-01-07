@@ -534,12 +534,31 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 			Write-Verbose "Skipping WinGet asset copying (networking disabled)"
 		}
 
-		# Copy package list file if specified (SandboxStart feature - optional)
+		# Copy AutoInstall.txt first (if exists and not empty)
+		$autoInstallPath = Join-Path (Join-Path $WorkingDir "wsb") "AutoInstall.txt"
+		if (Test-Path $autoInstallPath) {
+			$autoInstallContent = Get-Content -Path $autoInstallPath -Raw -ErrorAction SilentlyContinue
+			# Check if file has non-comment, non-empty lines
+			$hasPackages = ($autoInstallContent -split "`n" | Where-Object {
+				$_.Trim() -ne "" -and -not $_.Trim().StartsWith('#')
+			}).Count -gt 0
+
+			if ($hasPackages) {
+				Write-Verbose "Copying AutoInstall package list to sandbox"
+				# Copy as packages-autoinstall.txt
+				Copy-Item -Path $autoInstallPath -Destination (Join-Path $script:TestDataFolder "packages-autoinstall.txt") -ErrorAction SilentlyContinue
+			}
+		}
+
+		# Copy selected package list file if specified (SandboxStart feature - optional)
 		if (![string]::IsNullOrWhiteSpace($InstallPackageList)) {
 			$packageListPath = Join-Path (Join-Path $WorkingDir "wsb") "$InstallPackageList.txt"
 			if (Test-Path $packageListPath) {
-				Write-Verbose "Copying package list '$InstallPackageList' to sandbox"
-				Copy-Item -Path $packageListPath -Destination (Join-Path $script:TestDataFolder "packages.txt") -ErrorAction SilentlyContinue
+				# Skip if AutoInstall selected (already copied above)
+				if ($InstallPackageList -ne "AutoInstall") {
+					Write-Verbose "Copying package list '$InstallPackageList' to sandbox"
+					Copy-Item -Path $packageListPath -Destination (Join-Path $script:TestDataFolder "packages.txt") -ErrorAction SilentlyContinue
+				}
 			} else {
 				Write-Warning "Package list file not found: $packageListPath"
 			}
@@ -920,13 +939,81 @@ if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWin
 }
 Write-Host '    Configuration completed!' -ForegroundColor Green
 
+# AutoInstall Package List (installed FIRST, before selected list)
+`$autoInstallFile = Get-ChildItem -Filter 'packages-autoinstall.txt' -ErrorAction SilentlyContinue
+if (`$autoInstallFile -and (Test-Path `$autoInstallFile.FullName)) {
+	if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
+		Write-Host ''
+		Write-Host '================================================' -ForegroundColor Cyan
+		Write-Host '--> Installing AutoInstall Packages' -ForegroundColor Yellow
+		Write-Host '================================================' -ForegroundColor Cyan
+
+		try {
+			`$packages = Get-Content -Path `$autoInstallFile.FullName -Encoding UTF8 | Where-Object {
+				-not [string]::IsNullOrWhiteSpace(`$_) -and -not `$_.Trim().StartsWith('#')
+			}
+
+			if (`$packages.Count -eq 0) {
+				Write-Host '    No packages found in AutoInstall list.' -ForegroundColor Yellow
+			} else {
+				Write-Host "    Found `$(`$packages.Count) package(s) to install" -ForegroundColor Cyan
+
+				`$installed = 0
+				`$failed = 0
+
+				foreach (`$package in `$packages) {
+					`$packageId = `$package.Trim()
+					Write-Host "    Installing: `$packageId" -ForegroundColor Cyan
+
+					try {
+						`$result = winget install --id `$packageId --silent --accept-source-agreements --accept-package-agreements 2>&1
+
+						if (`$LASTEXITCODE -eq 0) {
+							Write-Host "      SUCCESS: `$packageId" -ForegroundColor Green
+							`$installed++
+						} else {
+							Write-Host "      FAILED: `$packageId (Exit code: `$LASTEXITCODE)" -ForegroundColor Red
+							`$failed++
+						}
+					} catch {
+						Write-Host "      ERROR: `$packageId - `$(`$_.Exception.Message)" -ForegroundColor Red
+						`$failed++
+					}
+				}
+
+				Write-Host ''
+				Write-Host "    Summary: `$installed installed, `$failed failed" -ForegroundColor `$(if (`$failed -eq 0) { 'Green' } else { 'Yellow' })
+			}
+		} catch {
+			Write-Host "    ERROR reading AutoInstall package list: `$(`$_.Exception.Message)" -ForegroundColor Red
+			Write-Host '    Continuing with selected package list...' -ForegroundColor Yellow
+		} finally {
+			# Clean up packages-autoinstall.txt file after installation
+			if (`$autoInstallFile -and (Test-Path `$autoInstallFile.FullName)) {
+				Remove-Item -Path `$autoInstallFile.FullName -Force -ErrorAction SilentlyContinue
+			}
+		}
+	} else {
+		Write-Host ''
+		Write-Host '================================================' -ForegroundColor Cyan
+		Write-Host '--> AutoInstall Package Installation Skipped' -ForegroundColor Yellow
+		Write-Host '================================================' -ForegroundColor Cyan
+		Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
+
+		# Clean up packages-autoinstall.txt file
+		if (`$autoInstallFile -and (Test-Path `$autoInstallFile.FullName)) {
+			Remove-Item -Path `$autoInstallFile.FullName -Force -ErrorAction SilentlyContinue
+		}
+	}
+}
+
 # Package Installation (optional SandboxStart feature - requires networking)
 `$packageListFile = Get-ChildItem -Filter 'packages.txt' -ErrorAction SilentlyContinue
 if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
 	if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
 		Write-Host ''
 		Write-Host '================================================' -ForegroundColor Cyan
-		Write-Host '--> Installing Packages from List' -ForegroundColor Yellow
+		Write-Host '--> Installing Selected Package List' -ForegroundColor Yellow
 		Write-Host '================================================' -ForegroundColor Cyan
 
 		try {
