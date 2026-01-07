@@ -2547,6 +2547,16 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$lblMapFolder.Text = "Mapped Folder:"
 		$form.Controls.Add($lblMapFolder)
 
+		# Read-Only notification label (centered above mapped folder controls)
+		$lblReadOnlyInfo = New-Object System.Windows.Forms.Label
+		$lblReadOnlyInfo.Location = New-Object System.Drawing.Point(($leftMargin + ($controlWidth / 2) - 57), $y)
+		$lblReadOnlyInfo.Size = New-Object System.Drawing.Size(100, 15)
+		$lblReadOnlyInfo.Text = "R/O by default!"
+		$lblReadOnlyInfo.Font = New-Object System.Drawing.Font("Segoe UI", 8, [System.Drawing.FontStyle]::Bold)
+		$lblReadOnlyInfo.ForeColor = [System.Drawing.SystemColors]::HotTrack
+		$lblReadOnlyInfo.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
+		$form.Controls.Add($lblReadOnlyInfo)
+
 		$txtMapFolder = New-Object System.Windows.Forms.TextBox
 		$txtMapFolder.Location = New-Object System.Drawing.Point($leftMargin, ($y + $labelHeight))
 		$txtMapFolder.Size = New-Object System.Drawing.Size($controlWidth, $controlHeight)
@@ -2606,7 +2616,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$chkMapFolderReadOnly.Location = New-Object System.Drawing.Point(($leftMargin + $controlWidth * 0.44 + 10), ($y + 2))
 		$chkMapFolderReadOnly.Size = New-Object System.Drawing.Size(15, 15)
 		$chkMapFolderReadOnly.Text = ""
-		$chkMapFolderReadOnly.Checked = $false
+		$chkMapFolderReadOnly.Checked = $true  # Default to read-only
 		$tooltipReadOnly = New-Object System.Windows.Forms.ToolTip
 		$tooltipReadOnly.SetToolTip($chkMapFolderReadOnly, "Map the folder as read-only in the sandbox. Prevents any modifications to source files.")
 		$form.Controls.Add($chkMapFolderReadOnly)
