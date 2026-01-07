@@ -1231,6 +1231,18 @@ function Sync-GitHubScriptsSelective {
 							continue
 						}
 					}
+
+					# Check if Std-*.txt file was deleted by user (state=0 in .ini)
+					if ($file.name -like 'Std-*.txt' -and -not (Test-Path $localPath)) {
+						$config = Get-PackageListConfig -WorkingDir $WorkingDir
+						$listName = [System.IO.Path]::GetFileNameWithoutExtension($file.name)
+						if ($config.ContainsKey($listName) -and $config[$listName] -eq 0) {
+							Write-Verbose "Skipping download for deleted package list: $($file.name)"
+							$skippedCount++
+							continue
+						}
+					}
+
 					# Always-sync files: Download and compare, overwrite if different
 					# Download from raw URL
 					$remoteContent = (Invoke-WebRequest -Uri $file.download_url -UseBasicParsing).Content
