@@ -137,7 +137,7 @@ function Get-PackageLists {
 	#>
 
 	$packageListDir = Join-Path $Script:WorkingDir "wsb"
-	$config = Get-PackageListConfig -WorkingDir $Script:WorkingDir
+	$config = Get-SandboxConfig -Section 'Lists' -WorkingDir $Script:WorkingDir
 	$lists = @()
 	$hasAutoInstall = $false
 
@@ -522,54 +522,74 @@ function Update-PackageSelectionForFileType {
 		[System.Windows.Forms.ComboBox]$PackageComboBox,
 
 		[Parameter(Mandatory)]
-		[System.Windows.Forms.Label]$StatusLabel
+		[System.Windows.Forms.Label]$StatusLabel,
+
+		[Parameter(Mandatory)]
+		[string]$WorkingDir
 	)
 
-	# Define package list mappings for each file extension
-	$extensionMappings = @{
-		'.py' = @{
-			CandidateNames = @('Std-Python', 'Python')
-			DisplayName = 'Python'
-		}
-		'.ahk' = @{
-			CandidateNames = @('Std-AHK', 'AHK', 'Std-AutoHotkey', 'AutoHotkey')
-			DisplayName = 'AHK'
-		}
-		'.au3' = @{
-			CandidateNames = @('Std-AU3', 'AU3', 'Std-AutoIt', 'AutoIt')
-			DisplayName = 'AU3'
-		}
-	}
+	# Load extension mappings from INI file
+	$extensionMappings = Get-SandboxConfig -Section 'Extensions' -WorkingDir $WorkingDir
 
-	# Get file extension
-	$extension = [System.IO.Path]::GetExtension($FileName).ToLower()
+	# Get file extension (without leading dot, lowercase)
+	$extension = [System.IO.Path]::GetExtension($FileName).TrimStart('.').ToLower()
 
-	# Check if this extension has package list mapping
+	# Check if this extension has a mapping
 	if (-not $extensionMappings.ContainsKey($extension)) {
 		return  # No mapping for this file type
 	}
 
-	$mapping = $extensionMappings[$extension]
+	$preferredPackage = $extensionMappings[$extension]
+
+	# Generate fallback candidate list
+	$candidateNames = @($preferredPackage)
+
+	# Add fallback: Strip "Std-" prefix if present
+	if ($preferredPackage -like "Std-*") {
+		$baseName = $preferredPackage -replace '^Std-', ''
+		$candidateNames += $baseName
+	}
+
+	# Add alternative full names for known extensions
+	$fullNameMap = @{
+		'AHK' = 'AutoHotkey'
+		'AU3' = 'AutoIt'
+	}
+
+	$baseName = $preferredPackage -replace '^Std-', ''
+	if ($fullNameMap.ContainsKey($baseName)) {
+		$fullName = $fullNameMap[$baseName]
+		$candidateNames += "Std-$fullName"
+		$candidateNames += $fullName
+	}
+
+	# Remove duplicates while preserving order
+	$candidateNames = $candidateNames | Select-Object -Unique
+
+	# Determine display name (strip "Std-" for status messages)
+	$displayName = $preferredPackage -replace '^Std-', ''
+
+	# Check if WinGet features are enabled
 	$winGetFeaturesEnabled = $NetworkingCheckbox.Checked -and -not $SkipWinGetCheckbox.Checked
 
 	if ($winGetFeaturesEnabled) {
 		# Try to find matching package list
-		$matchedPackage = Find-PackageListByPriority -ComboBox $PackageComboBox -CandidateNames $mapping.CandidateNames
+		$matchedPackage = Find-PackageListByPriority -ComboBox $PackageComboBox -CandidateNames $candidateNames
 
 		if ($matchedPackage) {
 			# Package list exists - auto-select it
 			$PackageComboBox.SelectedItem = $matchedPackage
-			$StatusLabel.Text = "Status: $extension selected -> Auto-selected $($mapping.DisplayName) package for installation"
+			$StatusLabel.Text = "Status: .$extension selected -> Auto-selected $displayName package for installation"
 		} else {
-			# No matching package list found - use short display name
-			$StatusLabel.Text = "Status: $extension selected -> WARNING: create '$($mapping.DisplayName).txt' in wsb\ folder!"
+			# No matching package list found
+			$StatusLabel.Text = "Status: .$extension selected -> WARNING: create '$displayName.txt' in wsb\ folder!"
 		}
 	} elseif ($SkipWinGetCheckbox.Checked) {
 		# Skip WinGet is enabled - show warning
-		$StatusLabel.Text = "Status: $extension selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+		$StatusLabel.Text = "Status: .$extension selected -> WARNING: Uncheck 'Skip WinGet installation'!"
 	} else {
 		# Networking disabled - show warning
-		$StatusLabel.Text = "Status: $extension selected -> WARNING: Enable networking (WinGet)!"
+		$StatusLabel.Text = "Status: .$extension selected -> WARNING: Enable networking (WinGet)!"
 	}
 }
 
@@ -691,7 +711,8 @@ function global:Update-FormFromSelection {
 			-NetworkingCheckbox $chkNetworking `
 			-SkipWinGetCheckbox $chkSkipWinGet `
 			-PackageComboBox $cmbInstallPackages `
-			-StatusLabel $lblStatus
+			-StatusLabel $lblStatus `
+			-WorkingDir $wsbDir
 	} else {
 		# Folder selected - find matching script from mappings
 		$matchingScript = Find-MatchingScript -Path $selectedDir
@@ -2455,6 +2476,9 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		$wsbDir = Join-Path $Script:WorkingDir "wsb"
 		Get-ScriptMappings | Out-Null  # Creates directory, mappings file, and migrates old names
 
+		# Initialize sandbox configuration file
+		Initialize-SandboxConfig -WorkingDir $Script:WorkingDir
+
 		# Initialize package list migration (one-time tracking)
 		Initialize-PackageListMigration -WorkingDir $Script:WorkingDir
 
@@ -2865,7 +2889,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					}
 
 					# Update .ini file (set to 0)
-					Set-PackageListConfig -ListName $listName -State 0 -WorkingDir $Script:WorkingDir
+					Set-SandboxConfig -Section 'Lists' -Key $listName -Value '0' -WorkingDir $Script:WorkingDir
 
 					# Refresh dropdown
 					$comboBox.Items.Clear()
@@ -3080,7 +3104,8 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					-NetworkingCheckbox $chkNetworking `
 					-SkipWinGetCheckbox $chkSkipWinGet `
 					-PackageComboBox $cmbInstallPackages `
-					-StatusLabel $lblStatus
+					-StatusLabel $lblStatus `
+					-WorkingDir $wsbDir
 			}
 		}
 	})
@@ -3150,7 +3175,8 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				-NetworkingCheckbox $chkNetworking `
 				-SkipWinGetCheckbox $chkSkipWinGet `
 				-PackageComboBox $cmbInstallPackages `
-				-StatusLabel $lblStatus
+				-StatusLabel $lblStatus `
+				-WorkingDir $wsbDir
 		}
 		})
 

@@ -1234,7 +1234,7 @@ function Sync-GitHubScriptsSelective {
 
 					# Check if Std-*.txt file was deleted by user (state=0 in .ini)
 					if ($file.name -like 'Std-*.txt' -and -not (Test-Path $localPath)) {
-						$config = Get-PackageListConfig -WorkingDir $WorkingDir
+						$config = Get-SandboxConfig -Section 'Lists' -WorkingDir $WorkingDir
 						$listName = [System.IO.Path]::GetFileNameWithoutExtension($file.name)
 						if ($config.ContainsKey($listName) -and $config[$listName] -eq 0) {
 							Write-Verbose "Skipping download for deleted package list: $($file.name)"
@@ -1325,13 +1325,13 @@ function Sync-GitHubScriptsSelective {
 
 				Write-Verbose "Removing obsolete Std-* package list: $listName"
 				Remove-Item -Path $obsoletePath -Force -ErrorAction SilentlyContinue
-				Set-PackageListConfig -ListName $listName -State 0 -WorkingDir (Split-Path $LocalFolder -Parent)
+				Set-SandboxConfig -Section 'Lists' -Key $listName -Value '0' -WorkingDir (Split-Path $LocalFolder -Parent)
 			}
 		}
 
 		# 2. Migration cleanup: Delete original default lists that have Std-* replacements
 		$workingDir = Split-Path $LocalFolder -Parent
-		$config = Get-PackageListConfig -WorkingDir $workingDir
+		$config = Get-SandboxConfig -Section 'Lists' -WorkingDir $workingDir
 		$migrationKeys = $config.Keys | Where-Object { $_ -like '_OriginalDefault_*' }
 
 		foreach ($migrationKey in $migrationKeys) {
@@ -1355,10 +1355,10 @@ function Sync-GitHubScriptsSelective {
 			if ($stdReplacementName -in $remoteStdTxtFiles) {
 				Write-Verbose "Removing original default list (replaced by $stdReplacementName): $originalListName"
 				Remove-Item -Path $originalPath -Force -ErrorAction SilentlyContinue
-				Set-PackageListConfig -ListName $originalListName -State 0 -WorkingDir $workingDir
+				Set-SandboxConfig -Section 'Lists' -Key $originalListName -Value '0' -WorkingDir $workingDir
 
 				# Remove migration tracking entry
-				Set-PackageListConfig -ListName $migrationKey -State 0 -WorkingDir $workingDir
+				Set-SandboxConfig -Section 'Lists' -Key $migrationKey -Value '0' -WorkingDir $workingDir
 			}
 		}
 
@@ -1378,125 +1378,197 @@ function Sync-GitHubScriptsSelective {
 
 #region Package List Management Functions
 
-function Get-PackageListConfig {
+function Get-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Returns hashtable of package list states from .ini file
+	Returns hashtable from specified section in sandboxtest-config.ini
 
 	.DESCRIPTION
-	Reads the package-lists.ini file and returns a hashtable with list names and states.
-	Creates default .ini file if missing.
+	Reads the sandboxtest-config.ini file and returns a hashtable from the specified section.
+	Supports [Lists] section (package list states) and [Extensions] section (file extension mappings).
+
+	.PARAMETER Section
+	The section to read: 'Lists' or 'Extensions'
 
 	.OUTPUTS
-	Hashtable with list names as keys and state (0 or 1) as values
+	Hashtable with keys and values from the specified section
 	#>
 	param(
+		[Parameter(Mandatory)]
+		[ValidateSet('Lists', 'Extensions')]
+		[string]$Section,
+
 		[string]$WorkingDir = $PWD.Path
 	)
 
-	$configPath = Join-Path (Join-Path $WorkingDir "wsb") "package-lists.ini"
+	# Determine wsb directory (handle both "Source" and "Source\wsb" paths)
+	if ($WorkingDir -match '\\wsb$') {
+		$wsbPath = $WorkingDir
+	} else {
+		$wsbPath = Join-Path $WorkingDir "wsb"
+	}
+
+	$configPath = Join-Path $wsbPath "sandboxtest-config.ini"
 	$config = @{}
 
 	if (Test-Path $configPath) {
 		try {
 			$lines = Get-Content -Path $configPath -Encoding UTF8
+			$inTargetSection = $false
+
 			foreach ($line in $lines) {
 				$line = $line.Trim()
-				# Skip empty lines and comments
-				if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
+
+				# Detect target section
+				if ($line -eq "[$Section]") {
+					$inTargetSection = $true
 					continue
 				}
 
-				# Parse key=value
+				# Exit section when new section starts
+				if ($line -match '^\[.+\]$') {
+					$inTargetSection = $false
+					continue
+				}
+
+				# Skip empty lines and comments
+				if (-not $inTargetSection -or [string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) {
+					continue
+				}
+
+				# Parse key=value in target section
 				if ($line -match '^(.+?)=(.+)$') {
-					$listName = $Matches[1].Trim()
-					$state = $Matches[2].Trim()
-					if ($state -match '^\d+$') {
-						$config[$listName] = [int]$state
+					$key = $Matches[1].Trim()
+					$value = $Matches[2].Trim()
+
+					if ($Section -eq 'Lists') {
+						# For [Lists] section: Validate value is numeric
+						if ($value -match '^\d+$') {
+							$config[$key] = [int]$value
+						}
+					} elseif ($Section -eq 'Extensions') {
+						# For [Extensions] section: Store as-is (extension -> package name)
+						$config[$key.ToLower()] = $value
 					}
 				}
 			}
 		}
 		catch {
-			Write-Warning "Failed to read package list config: $_"
+			Write-Warning "Failed to read sandbox config (section=$Section): $_"
 		}
 	}
 
 	return $config
 }
 
-function Set-PackageListConfig {
+function Set-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Updates .ini file with list name and state
+	Updates sandboxtest-config.ini with key/value in specified section
 
-	.PARAMETER ListName
-	Package list name
+	.PARAMETER Key
+	Configuration key name
 
-	.PARAMETER State
-	State: 1 = enabled, 0 = disabled/deleted
+	.PARAMETER Value
+	Configuration value
+
+	.PARAMETER Section
+	Section to update: 'Lists' or 'Extensions'
 
 	.PARAMETER WorkingDir
 	Working directory (defaults to current directory)
 	#>
 	param(
 		[Parameter(Mandatory=$true)]
-		[string]$ListName,
+		[string]$Key,
 
 		[Parameter(Mandatory=$true)]
-		[ValidateRange(0,1)]
-		[int]$State,
+		[string]$Value,
+
+		[Parameter(Mandatory=$true)]
+		[ValidateSet('Lists', 'Extensions')]
+		[string]$Section,
 
 		[string]$WorkingDir = $PWD.Path
 	)
 
-	$wsbDir = Join-Path $WorkingDir "wsb"
+	# Determine wsb directory (handle both "Source" and "Source\wsb" paths)
+	if ($WorkingDir -match '\\wsb$') {
+		$wsbDir = $WorkingDir
+	} else {
+		$wsbDir = Join-Path $WorkingDir "wsb"
+	}
+
 	if (-not (Test-Path $wsbDir)) {
 		New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 	}
 
-	$configPath = Join-Path $wsbDir "package-lists.ini"
-	$config = Get-PackageListConfig -WorkingDir $WorkingDir
+	$configPath = Join-Path $wsbDir "sandboxtest-config.ini"
 
-	# Update or add entry
-	$config[$ListName] = $State
+	# Read both sections
+	$listsConfig = Get-SandboxConfig -Section 'Lists' -WorkingDir $WorkingDir
+	$extensionsConfig = Get-SandboxConfig -Section 'Extensions' -WorkingDir $WorkingDir
 
-	# Write back to file
+	# Update the target section
+	if ($Section -eq 'Lists') {
+		$listsConfig[$Key] = [int]$Value
+	} elseif ($Section -eq 'Extensions') {
+		$extensionsConfig[$Key.ToLower()] = $Value
+	}
+
+	# Write back to file with both sections
 	try {
-		$lines = @("# Package List Configuration")
-		$lines += "# 1 = enabled, 0 = disabled/deleted"
+		$lines = @("# SandboxTest Configuration File")
 		$lines += ""
 
-		# Sort entries (but keep special entries at bottom)
+		# Write [Lists] section
+		$lines += "[Lists]"
+		$lines += "# Package list states: 1 = enabled, 0 = disabled/deleted"
 
-		# Force arrays to prevent issues when there's only one key
-		$specialKeys = @($config.Keys | Where-Object { $_ -like '_*' })
-		$regularKeys = @($config.Keys | Where-Object { $_ -notlike '_*' } | Sort-Object)
+		# Sort entries (but keep special entries at bottom)
+		$specialKeys = @($listsConfig.Keys | Where-Object { $_ -like '_*' })
+		$regularKeys = @($listsConfig.Keys | Where-Object { $_ -notlike '_*' } | Sort-Object)
 
 		# Add regular keys first
 		foreach ($key in $regularKeys) {
-			$lines += "$key=$($config[$key])"
+			$lines += "$key=$($listsConfig[$key])"
 		}
 
 		# Add special keys last
 		foreach ($key in $specialKeys) {
-			$lines += "$key=$($config[$key])"
+			$lines += "$key=$($listsConfig[$key])"
 		}
+
+		$lines += ""
+
+		# Write [Extensions] section
+		$lines += "[Extensions]"
+		$lines += "# Maps file extensions to preferred package lists"
+		$lines += "# Format: extension=PackageListName"
+		$lines += "# Fallback: If preferred list doesn't exist, tries variations (Std-AHK -> AHK)"
+
+		# Sort extension mappings alphabetically
+		$sortedExtensions = $extensionsConfig.Keys | Sort-Object
+		foreach ($ext in $sortedExtensions) {
+			$lines += "$ext=$($extensionsConfig[$ext])"
+		}
+
 		Set-Content -Path $configPath -Value $lines -Encoding UTF8
 	}
 	catch {
-		Write-Warning "Failed to write package list config: $_"
+		Write-Warning "Failed to write sandbox config (section=$Section): $_"
 	}
 }
 
-function Initialize-PackageListConfig {
+function Initialize-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Scans wsb/ folder for .txt files, creates .ini entries
+	Creates sandboxtest-config.ini with [Lists] and [Extensions] sections
 
 	.DESCRIPTION
-	Creates initial package-lists.ini file if missing and populates it
-	with all existing package lists (excluding script-mappings.txt).
+	Creates initial sandboxtest-config.ini file if missing and populates it with:
+	- [Lists] section: All existing package lists (excluding script-mappings.txt)
+	- [Extensions] section: Default extension mappings (py, ahk, au3)
 	Called on GUI startup.
 
 	.PARAMETER WorkingDir
@@ -1506,15 +1578,26 @@ function Initialize-PackageListConfig {
 		[string]$WorkingDir = $PWD.Path
 	)
 
-	$wsbDir = Join-Path $WorkingDir "wsb"
-	$configPath = Join-Path $wsbDir "package-lists.ini"
+	# Determine wsb directory (handle both "Source" and "Source\wsb" paths)
+	if ($WorkingDir -match '\\wsb$') {
+		$wsbDir = $WorkingDir
+	} else {
+		$wsbDir = Join-Path $WorkingDir "wsb"
+	}
+
+	$configPath = Join-Path $wsbDir "sandboxtest-config.ini"
 
 	# Only initialize if .ini doesn't exist
 	if (Test-Path $configPath) {
 		return
 	}
 
-	Write-Verbose "Initializing package list configuration"
+	Write-Verbose "Initializing sandbox configuration"
+
+	# Create directory if missing
+	if (-not (Test-Path $wsbDir)) {
+		New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
+	}
 
 	# Get all .txt files (excluding script-mappings.txt)
 	$packageLists = @()
@@ -1527,9 +1610,33 @@ function Initialize-PackageListConfig {
 		}
 	}
 
-	# Create .ini with all lists enabled (state=1)
-	foreach ($listName in $packageLists) {
-		Set-PackageListConfig -ListName $listName -State 1 -WorkingDir $WorkingDir
+	# Build INI content
+	$lines = @("# SandboxTest Configuration File")
+	$lines += ""
+	$lines += "[Lists]"
+	$lines += "# Package list states: 1 = enabled, 0 = disabled/deleted"
+
+	# Add all discovered package lists
+	foreach ($listName in ($packageLists | Sort-Object)) {
+		$lines += "$listName=1"
+	}
+
+	$lines += ""
+	$lines += "[Extensions]"
+	$lines += "# Maps file extensions to preferred package lists"
+	$lines += "# Format: extension=PackageListName"
+	$lines += "# Fallback: If preferred list doesn't exist, tries variations (Std-AHK -> AHK)"
+	$lines += "py=Std-Python"
+	$lines += "ahk=Std-AHK"
+	$lines += "au3=Std-AU3"
+
+	# Write to file
+	try {
+		Set-Content -Path $configPath -Value $lines -Encoding UTF8
+		Write-Verbose "Created sandboxtest-config.ini with $($packageLists.Count) package lists"
+	}
+	catch {
+		Write-Warning "Failed to initialize sandbox config: $_"
 	}
 }
 
@@ -1551,7 +1658,7 @@ function Initialize-PackageListMigration {
 	)
 
 	# Check if migration already completed
-	$config = Get-PackageListConfig -WorkingDir $WorkingDir
+	$config = Get-SandboxConfig -Section 'Lists' -WorkingDir $WorkingDir
 	if ($config.ContainsKey('_MigrationCompleted')) {
 		return  # Already migrated
 	}
@@ -1570,14 +1677,14 @@ function Initialize-PackageListMigration {
 			$firstLine = Get-Content -Path $listPath -TotalCount 1 -ErrorAction SilentlyContinue
 			if ($firstLine -notmatch '^\s*#\s*CUSTOM\s+OVERRIDE') {
 				# Mark as original default (can be safely deleted during migration)
-				Set-PackageListConfig -ListName "_OriginalDefault_$listName" -State 1 -WorkingDir $WorkingDir
+				Set-SandboxConfig -Section 'Lists' -Key "_OriginalDefault_$listName" -Value '1' -WorkingDir $WorkingDir
 				Write-Verbose "Tracked original default list: $listName"
 			}
 		}
 	}
 
 	# Mark migration as completed
-	Set-PackageListConfig -ListName '_MigrationCompleted' -State 1 -WorkingDir $WorkingDir
+	Set-SandboxConfig -Section 'Lists' -Key '_MigrationCompleted' -Value '1' -WorkingDir $WorkingDir
 }
 
 #endregion
