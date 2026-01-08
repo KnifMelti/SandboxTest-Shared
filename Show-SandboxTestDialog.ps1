@@ -486,6 +486,94 @@ function Find-MatchingScript {
 }
 
 
+# Helper function to find package list by priority
+function Find-PackageListByPriority {
+	param(
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.ComboBox]$ComboBox,
+
+		[Parameter(Mandatory)]
+		[string[]]$CandidateNames
+	)
+
+	foreach ($name in $CandidateNames) {
+		if ($ComboBox.Items -contains $name) {
+			return $name
+		}
+	}
+
+	return $null
+}
+
+
+# Unified auto-selection function for file extensions
+function Update-PackageSelectionForFileType {
+	param(
+		[Parameter(Mandatory)]
+		[string]$FileName,
+
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.CheckBox]$NetworkingCheckbox,
+
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.CheckBox]$SkipWinGetCheckbox,
+
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.ComboBox]$PackageComboBox,
+
+		[Parameter(Mandatory)]
+		[System.Windows.Forms.Label]$StatusLabel
+	)
+
+	# Define package list mappings for each file extension
+	$extensionMappings = @{
+		'.py' = @{
+			CandidateNames = @('Std-Python', 'Python')
+			DisplayName = 'Python'
+		}
+		'.ahk' = @{
+			CandidateNames = @('Std-AHK', 'AHK', 'Std-AutoHotkey', 'AutoHotkey')
+			DisplayName = 'AHK'
+		}
+		'.au3' = @{
+			CandidateNames = @('Std-AU3', 'AU3', 'Std-AutoIt', 'AutoIt')
+			DisplayName = 'AU3'
+		}
+	}
+
+	# Get file extension
+	$extension = [System.IO.Path]::GetExtension($FileName).ToLower()
+
+	# Check if this extension has package list mapping
+	if (-not $extensionMappings.ContainsKey($extension)) {
+		return  # No mapping for this file type
+	}
+
+	$mapping = $extensionMappings[$extension]
+	$winGetFeaturesEnabled = $NetworkingCheckbox.Checked -and -not $SkipWinGetCheckbox.Checked
+
+	if ($winGetFeaturesEnabled) {
+		# Try to find matching package list
+		$matchedPackage = Find-PackageListByPriority -ComboBox $PackageComboBox -CandidateNames $mapping.CandidateNames
+
+		if ($matchedPackage) {
+			# Package list exists - auto-select it
+			$PackageComboBox.SelectedItem = $matchedPackage
+			$StatusLabel.Text = "Status: $extension selected -> Auto-selected $($mapping.DisplayName) package for installation"
+		} else {
+			# No matching package list found - use short display name
+			$StatusLabel.Text = "Status: $extension selected -> WARNING: create '$($mapping.DisplayName).txt' in wsb\ folder!"
+		}
+	} elseif ($SkipWinGetCheckbox.Checked) {
+		# Skip WinGet is enabled - show warning
+		$StatusLabel.Text = "Status: $extension selected -> WARNING: Uncheck 'Skip WinGet installation'!"
+	} else {
+		# Networking disabled - show warning
+		$StatusLabel.Text = "Status: $extension selected -> WARNING: Enable networking (WinGet)!"
+	}
+}
+
+
 # Process selected folder or file and update form controls
 function global:Update-FormFromSelection {
 	param(
@@ -598,80 +686,12 @@ function global:Update-FormFromSelection {
 		# Store selected file for re-evaluation when checkboxes change
 		$script:currentSelectedFile = $FileName
 
-		# Auto-select Python package if .py file detected
-		if ($FileName -like "*.py") {
-			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-			if ($winGetFeaturesEnabled) {
-				# WinGet is available - check if Python package list exists
-				$pythonPackageName = "Python"
-
-				if ($cmbInstallPackages.Items -contains $pythonPackageName) {
-					# Python package list exists - auto-select it
-					$cmbInstallPackages.SelectedItem = $pythonPackageName
-					$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
-				} else {
-					# Python package list doesn't exist - show warning
-					$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
-				}
-			} elseif ($chkSkipWinGet.Checked) {
-				# Skip WinGet is enabled - show warning
-				$lblStatus.Text = "Status: .py selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-			} else {
-				# Networking disabled - show warning
-				$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
-			}
-		}
-
-		# Auto-select AutoHotkey package if .ahk file detected
-		if ($FileName -like "*.ahk") {
-			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-			if ($winGetFeaturesEnabled) {
-				# WinGet is available - check if AHK package list exists
-				$ahkPackageName = "AHK"
-
-				if ($cmbInstallPackages.Items -contains $ahkPackageName) {
-					# AHK package list exists - auto-select it
-					$cmbInstallPackages.SelectedItem = $ahkPackageName
-					$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
-				} else {
-					# AHK package list doesn't exist - show warning
-					$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
-				}
-			} elseif ($chkSkipWinGet.Checked) {
-				# Skip WinGet is enabled - show warning
-				$lblStatus.Text = "Status: .ahk selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-			} else {
-				# Networking disabled - show warning
-				$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
-			}
-		}
-
-		# Auto-select AutoIt package if .au3 file detected
-		if ($FileName -like "*.au3") {
-			$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-			if ($winGetFeaturesEnabled) {
-				# WinGet is available - check if AU3 package list exists
-				$au3PackageName = "AU3"
-
-				if ($cmbInstallPackages.Items -contains $au3PackageName) {
-					# AU3 package list exists - auto-select it
-					$cmbInstallPackages.SelectedItem = $au3PackageName
-					$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
-				} else {
-					# AU3 package list doesn't exist - show warning
-					$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
-				}
-			} elseif ($chkSkipWinGet.Checked) {
-				# Skip WinGet is enabled - show warning
-				$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-			} else {
-				# Networking disabled - show warning
-				$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
-			}
-		}
+		# Auto-select package lists for specific file types (.py, .ahk, .au3)
+		Update-PackageSelectionForFileType -FileName $FileName `
+			-NetworkingCheckbox $chkNetworking `
+			-SkipWinGetCheckbox $chkSkipWinGet `
+			-PackageComboBox $cmbInstallPackages `
+			-StatusLabel $lblStatus
 	} else {
 		# Folder selected - find matching script from mappings
 		$matchingScript = Find-MatchingScript -Path $selectedDir
@@ -3055,80 +3075,12 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				# Re-run package auto-selection logic
 				$selectedFile = $script:currentSelectedFile
 
-				# Auto-select Python package if .py file detected
-				if ($selectedFile -like "*.py") {
-					$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-					if ($winGetFeaturesEnabled) {
-						# WinGet is available - check if Python package list exists
-						$pythonPackageName = "Python"
-
-						if ($cmbInstallPackages.Items -contains $pythonPackageName) {
-							# Python package list exists - auto-select it
-							$cmbInstallPackages.SelectedItem = $pythonPackageName
-							$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
-						} else {
-							# Python package list doesn't exist - show warning
-							$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
-						}
-					} elseif ($chkSkipWinGet.Checked) {
-						# Skip WinGet is enabled - show warning
-						$lblStatus.Text = "Status: .py selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-					} else {
-						# Networking disabled - show warning
-						$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
-					}
-				}
-
-				# Auto-select AutoHotkey package if .ahk file detected
-				if ($selectedFile -like "*.ahk") {
-					$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-					if ($winGetFeaturesEnabled) {
-						# WinGet is available - check if AHK package list exists
-						$ahkPackageName = "AHK"
-
-						if ($cmbInstallPackages.Items -contains $ahkPackageName) {
-							# AHK package list exists - auto-select it
-							$cmbInstallPackages.SelectedItem = $ahkPackageName
-							$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
-						} else {
-							# AHK package list doesn't exist - show warning
-							$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
-						}
-					} elseif ($chkSkipWinGet.Checked) {
-						# Skip WinGet is enabled - show warning
-						$lblStatus.Text = "Status: .ahk selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-					} else {
-						# Networking disabled - show warning
-						$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
-					}
-				}
-
-				# Auto-select AutoIt package if .au3 file detected
-				if ($selectedFile -like "*.au3") {
-					$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-					if ($winGetFeaturesEnabled) {
-						# WinGet is available - check if AU3 package list exists
-						$au3PackageName = "AU3"
-
-						if ($cmbInstallPackages.Items -contains $au3PackageName) {
-							# AU3 package list exists - auto-select it
-							$cmbInstallPackages.SelectedItem = $au3PackageName
-							$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
-						} else {
-							# AU3 package list doesn't exist - show warning
-							$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
-						}
-					} elseif ($chkSkipWinGet.Checked) {
-						# Skip WinGet is enabled - show warning
-						$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-					} else {
-						# Networking disabled - show warning
-						$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
-					}
-				}
+				# Auto-select package lists for specific file types (.py, .ahk, .au3)
+				Update-PackageSelectionForFileType -FileName $selectedFile `
+					-NetworkingCheckbox $chkNetworking `
+					-SkipWinGetCheckbox $chkSkipWinGet `
+					-PackageComboBox $cmbInstallPackages `
+					-StatusLabel $lblStatus
 			}
 		}
 	})
@@ -3193,79 +3145,12 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			# Re-run package auto-selection logic
 			$selectedFile = $script:currentSelectedFile
 
-			# Auto-select Python package if .py file detected
-			if ($selectedFile -like "*.py") {
-				$winGetFeaturesEnabled = $networkingEnabled -and -not $skipWinGet
-
-				if ($winGetFeaturesEnabled) {
-					# WinGet is available - check if Python package list exists
-					$pythonPackageName = "Python"
-
-					if ($cmbInstallPackages.Items -contains $pythonPackageName) {
-						# Python package list exists - auto-select it
-						$cmbInstallPackages.SelectedItem = $pythonPackageName
-						$lblStatus.Text = "Status: .py selected -> Auto-selected Python package for installation"
-					} else {
-						# Python package list doesn't exist - show warning
-						$lblStatus.Text = "Status: .py selected -> WARNING: create 'Python.txt' in wsb\ folder!"
-					}
-				} elseif ($skipWinGet) {
-					# Skip WinGet is enabled - show warning
-					$lblStatus.Text = "Status: .py selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-				} else {
-					# Networking disabled - show warning
-					$lblStatus.Text = "Status: .py selected -> WARNING: Enable networking (WinGet)!"
-				}
-			}
-
-			# Auto-select AutoHotkey package if .ahk file detected
-			if ($selectedFile -like "*.ahk") {
-				$winGetFeaturesEnabled = $networkingEnabled -and -not $skipWinGet
-
-				if ($winGetFeaturesEnabled) {
-					# WinGet is available - check if AHK package list exists
-					$ahkPackageName = "AHK"
-
-					if ($cmbInstallPackages.Items -contains $ahkPackageName) {
-						# AHK package list exists - auto-select it
-						$cmbInstallPackages.SelectedItem = $ahkPackageName
-						$lblStatus.Text = "Status: .ahk selected -> Auto-selected AHK package for installation"
-					} else {
-						# AHK package list doesn't exist - show warning
-						$lblStatus.Text = "Status: .ahk selected -> WARNING: create 'AHK.txt' in wsb\ folder!"
-					}
-				} elseif ($skipWinGet) {
-					# Skip WinGet is enabled - show warning
-					$lblStatus.Text = "Status: .ahk selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-				} else {
-					# Networking disabled - show warning
-					$lblStatus.Text = "Status: .ahk selected -> WARNING: Enable networking (WinGet)!"
-				}
-			}
-	# Auto-select AutoIt package if .au3 file detected
-	if ($selectedFile -like "*.au3") {
-		$winGetFeaturesEnabled = $chkNetworking.Checked -and -not $chkSkipWinGet.Checked
-
-		if ($winGetFeaturesEnabled) {
-			# WinGet is available - check if AU3 package list exists
-			$au3PackageName = "AU3"
-
-			if ($cmbInstallPackages.Items -contains $au3PackageName) {
-				# AU3 package list exists - auto-select it
-				$cmbInstallPackages.SelectedItem = $au3PackageName
-				$lblStatus.Text = "Status: .au3 selected -> Auto-selected AU3 package for installation"
-			} else {
-				# AU3 package list doesn't exist - show warning
-				$lblStatus.Text = "Status: .au3 selected -> WARNING: create 'AU3.txt' in wsb\ folder!"
-			}
-		} elseif ($chkSkipWinGet.Checked) {
-			# Skip WinGet is enabled - show warning
-			$lblStatus.Text = "Status: .au3 selected -> WARNING: Uncheck 'Skip WinGet installation'!"
-		} else {
-			# Networking disabled - show warning
-			$lblStatus.Text = "Status: .au3 selected -> WARNING: Enable networking (WinGet)!"
-		}
-	}
+			# Auto-select package lists for specific file types (.py, .ahk, .au3)
+			Update-PackageSelectionForFileType -FileName $selectedFile `
+				-NetworkingCheckbox $chkNetworking `
+				-SkipWinGetCheckbox $chkSkipWinGet `
+				-PackageComboBox $cmbInstallPackages `
+				-StatusLabel $lblStatus
 		}
 		})
 
