@@ -2730,7 +2730,29 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$btnBrowseFile.Add_Click({
 			$fileDialog = New-Object System.Windows.Forms.OpenFileDialog
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
-			$fileDialog.Filter = "Executable Files (*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.au3;*.py;*.js)|*.exe;*.msi;*.msix;*.cmd;*.bat;*.ps1;*.appx;*.appxbundle;*.intunewin;*.ahk;*.au3;*.py;*.js|All Files (*.*)|*.*"
+
+			# Build dynamic filter from INI extensions
+			$baseExtensions = @("exe", "msi", "msix", "cmd", "bat", "ps1", "appx", "appxbundle", "intunewin")
+			$defaultScriptExtensions = @("ahk", "au3", "py", "js")
+
+			# Load custom extensions from INI
+			$extensionMappings = Get-SandboxConfig -Section 'Extensions' -WorkingDir $wsbDir
+			$customExtensions = @()
+
+			foreach ($ext in ($extensionMappings.Keys | Sort-Object)) {
+				# Exclude base executables and default script extensions
+				if ($ext -notin $baseExtensions -and $ext -notin $defaultScriptExtensions) {
+					$customExtensions += $ext
+				}
+			}
+
+			# Combine: base + custom (sorted) + defaults
+			$allExtensions = $baseExtensions + $customExtensions + $defaultScriptExtensions
+
+			# Build filter string (appears twice: display and pattern)
+			$filterExtensions = "*." + ($allExtensions -join ";*.")
+			$fileDialog.Filter = "Executable Files ($filterExtensions)|$filterExtensions|All Files (*.*)|*.*"
+
 			$fileDialog.InitialDirectory = $txtMapFolder.Text
 			
 			if ($fileDialog.ShowDialog() -eq "OK") {
