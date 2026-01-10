@@ -200,7 +200,7 @@ function Show-PackageListEditor {
 	#>
 	param(
 		[string]$ListName = "",
-		[ValidateSet("PackageList", "ScriptMapping")]
+		[ValidateSet("PackageList", "ScriptMapping", "ConfigEdit")]
 		[string]$EditorMode = "PackageList"
 	)
 
@@ -209,10 +209,12 @@ function Show-PackageListEditor {
 	$editorForm.Text = switch ($EditorMode) {
 		"PackageList" { if ($ListName) { "Edit Package List: $ListName" } else { "Create New Package List" } }
 		"ScriptMapping" { "Edit Script Mappings" }
+		"ConfigEdit" { "Edit Configuration" }
 	}
 	$editorForm.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size(420, 370) }
 		"ScriptMapping" { New-Object System.Drawing.Size(510, 505) }
+		"ConfigEdit" { New-Object System.Drawing.Size(420, 370) }
 	}
 	$editorForm.StartPosition = "CenterParent"
 	$editorForm.FormBorderStyle = "FixedDialog"
@@ -240,6 +242,7 @@ function Show-PackageListEditor {
 	$controlWidth = switch ($EditorMode) {
 		"PackageList" { 380 }
 		"ScriptMapping" { 470 }
+		"ConfigEdit" { 380 }
 	}
 
 	# List name field - only for PackageList mode
@@ -270,6 +273,7 @@ function Show-PackageListEditor {
 	$lblPackages.Text = switch ($EditorMode) {
 		"PackageList" { "Package IDs (one per line):" }
 		"ScriptMapping" { "Script Mappings Configuration:" }
+		"ConfigEdit" { "Configuration Settings:" }
 	}
 	$editorForm.Controls.Add($lblPackages)
 
@@ -278,6 +282,7 @@ function Show-PackageListEditor {
 	$txtPackages.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size($controlWidth, 140) }
 		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 270) }
+		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 140) }
 	}
 	$txtPackages.Multiline = $true
 	$txtPackages.ScrollBars = "Vertical"
@@ -289,6 +294,8 @@ function Show-PackageListEditor {
 	# Load existing content if editing
 	if ($EditorMode -eq "ScriptMapping") {
 		$listPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "script-mappings.txt"
+	} elseif ($EditorMode -eq "ConfigEdit") {
+		$listPath = Join-Path (Join-Path $Script:WorkingDir "wsb") "config.ini"
 	} else {
 		$listPath = if ($ListName) { Join-Path (Join-Path $Script:WorkingDir "wsb") "$ListName.txt" } else { $null }
 	}
@@ -314,6 +321,7 @@ function Show-PackageListEditor {
 	$y += switch ($EditorMode) {
 		"PackageList" { 175 }
 		"ScriptMapping" { 320 }
+		"ConfigEdit" { 175 }
 	}
 
 	# Help text
@@ -322,6 +330,7 @@ function Show-PackageListEditor {
 	$lblHelp.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size($controlWidth, 50) }
 		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 70) }
+		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 50) }
 	}
 	$lblHelp.Text = switch ($EditorMode) {
 		"PackageList" { "Example: Notepad++.Notepad++`nUse WinGet package IDs from winget search`nComments: Lines starting with # are ignored" }
@@ -332,6 +341,7 @@ Patterns are matched against folder/file names (case-insensitive).
 Wildcards: * (any characters), ? (single character)
 Comments: Lines starting with # are ignored.
 "@ }
+		"ConfigEdit" { "INI format configuration file.`n[Lists] section: Package list states (1=enabled, 0=disabled)`n[Extensions] section: File extension mappings (ext=ListName)" }
 	}
 	$lblHelp.Name = 'lblHelp'  # For theme detection
 	$editorForm.Controls.Add($lblHelp)
@@ -339,6 +349,7 @@ Comments: Lines starting with # are ignored.
 	$y += switch ($EditorMode) {
 		"PackageList" { 50 }
 		"ScriptMapping" { 90 }
+		"ConfigEdit" { 50 }
 	}
 
 	# Buttons
@@ -376,6 +387,14 @@ Comments: Lines starting with # are ignored.
 			}
 
 			$listPath = Join-Path $wsbDir "$listNameValue.txt"
+		} elseif ($EditorMode -eq "ConfigEdit") {
+			# ConfigEdit mode - direct to config.ini
+			$wsbDir = Join-Path $Script:WorkingDir "wsb"
+			if (-not (Test-Path $wsbDir)) {
+				New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
+			}
+			$listPath = Join-Path $wsbDir "config.ini"
+			$listNameValue = "sandboxtest-config"
 		} else {
 			# ScriptMapping mode - direct to script-mappings.txt
 			$wsbDir = Join-Path $Script:WorkingDir "wsb"
@@ -385,7 +404,7 @@ Comments: Lines starting with # are ignored.
 			$listPath = Join-Path $wsbDir "script-mappings.txt"
 			$listNameValue = "script-mappings"
 		}
-
+		
 		# Save the file
 		try {
 			$packageContent = $txtPackages.Text.Trim()
@@ -3386,6 +3405,24 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		})
 
 		$form.Controls.Add($btnEditMappings)
+
+		# Edit config button (gear icon)
+		$btnEditConfig = New-Object System.Windows.Forms.Button
+		$btnEditConfig.Location = New-Object System.Drawing.Point((20+25), ($y + 3))
+		$btnEditConfig.Size = New-Object System.Drawing.Size(20, 20)
+		$btnEditConfig.Text = [char]0x2699
+		$btnEditConfig.Font = New-Object System.Drawing.Font("Segoe UI Symbol", 14, [System.Drawing.FontStyle]::Regular)
+
+		# Tooltip
+		$tooltipEditMappings = New-Object System.Windows.Forms.ToolTip
+		$tooltipEditMappings.SetToolTip($btnEditConfig, "Edit config...")
+
+		# Click event
+		$btnEditConfig.Add_Click({
+			Show-PackageListEditor -EditorMode "ConfigEdit" | Out-Null
+		})
+
+		$form.Controls.Add($btnEditConfig)
 
 		# Create the script textbox first (before buttons) so buttons appear on top
 		$txtScript = New-Object System.Windows.Forms.TextBox

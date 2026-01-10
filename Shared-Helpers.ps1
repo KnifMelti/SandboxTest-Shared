@@ -1381,10 +1381,10 @@ function Sync-GitHubScriptsSelective {
 function Get-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Returns hashtable from specified section in sandboxtest-config.ini
+	Returns hashtable from specified section in config.ini
 
 	.DESCRIPTION
-	Reads the sandboxtest-config.ini file and returns a hashtable from the specified section.
+	Reads the config.ini file and returns a hashtable from the specified section.
 	Supports [Lists] section (package list states) and [Extensions] section (file extension mappings).
 
 	.PARAMETER Section
@@ -1408,7 +1408,7 @@ function Get-SandboxConfig {
 		$wsbPath = Join-Path $WorkingDir "wsb"
 	}
 
-	$configPath = Join-Path $wsbPath "sandboxtest-config.ini"
+	$configPath = Join-Path $wsbPath "config.ini"
 	$config = @{}
 
 	if (Test-Path $configPath) {
@@ -1464,7 +1464,7 @@ function Get-SandboxConfig {
 function Set-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Updates sandboxtest-config.ini with key/value in specified section
+	Updates config.ini with key/value in specified section
 
 	.PARAMETER Key
 	Configuration key name
@@ -1503,7 +1503,7 @@ function Set-SandboxConfig {
 		New-Item -ItemType Directory -Path $wsbDir -Force | Out-Null
 	}
 
-	$configPath = Join-Path $wsbDir "sandboxtest-config.ini"
+	$configPath = Join-Path $wsbDir "config.ini"
 
 	# Read both sections
 	$listsConfig = Get-SandboxConfig -Section 'Lists' -WorkingDir $WorkingDir
@@ -1563,10 +1563,10 @@ function Set-SandboxConfig {
 function Initialize-SandboxConfig {
 	<#
 	.SYNOPSIS
-	Creates sandboxtest-config.ini with [Lists] and [Extensions] sections
+	Creates config.ini with [Lists] and [Extensions] sections
 
 	.DESCRIPTION
-	Creates initial sandboxtest-config.ini file if missing and populates it with:
+	Creates initial config.ini file if missing and populates it with:
 	- [Lists] section: All existing package lists (excluding script-mappings.txt)
 	- [Extensions] section: Default extension mappings (py, ahk, au3)
 	Called on GUI startup.
@@ -1585,7 +1585,19 @@ function Initialize-SandboxConfig {
 		$wsbDir = Join-Path $WorkingDir "wsb"
 	}
 
-	$configPath = Join-Path $wsbDir "sandboxtest-config.ini"
+	$configPath = Join-Path $wsbDir "config.ini"
+
+	# Migration: Rename old sandboxtest-config.ini to config.ini if it exists
+	$oldConfigPath = Join-Path $wsbDir "sandboxtest-config.ini"
+	if ((Test-Path $oldConfigPath) -and (-not (Test-Path $configPath))) {
+		try {
+			Move-Item -Path $oldConfigPath -Destination $configPath -Force
+			Write-Verbose "Migrated sandboxtest-config.ini to config.ini"
+		}
+		catch {
+			Write-Warning "Failed to migrate config file: $_"
+		}
+	}
 
 	# Only initialize if .ini doesn't exist
 	if (Test-Path $configPath) {
@@ -1633,7 +1645,7 @@ function Initialize-SandboxConfig {
 	# Write to file
 	try {
 		Set-Content -Path $configPath -Value $lines -Encoding UTF8
-		Write-Verbose "Created sandboxtest-config.ini with $($packageLists.Count) package lists"
+		Write-Verbose "Created config.ini with $($packageLists.Count) package lists"
 	}
 	catch {
 		Write-Warning "Failed to initialize sandbox config: $_"
