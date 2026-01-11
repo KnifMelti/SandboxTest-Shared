@@ -3166,8 +3166,8 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		# Networking checkbox
 		$chkNetworking = New-Object System.Windows.Forms.CheckBox
 		$chkNetworking.Location = New-Object System.Drawing.Point($leftMargin, $y)
-		$chkNetworking.Size = New-Object System.Drawing.Size(200, $labelHeight)
-		$chkNetworking.Text = "Enable Networking"
+		$chkNetworking.Size = New-Object System.Drawing.Size(130, $labelHeight)
+		$chkNetworking.Text = "Enable networking"
 		$chkNetworking.Checked = $true
 		$tooltipNetworking = New-Object System.Windows.Forms.ToolTip
 		$tooltipNetworking.SetToolTip($chkNetworking, "Enable network access in sandbox (required for WinGet downloads)")
@@ -3222,6 +3222,15 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		})
 
 		$form.Controls.Add($chkNetworking)
+
+		# Protected Client checkbox (same Y-position as Networking, positioned to the right)
+		$chkProtectedClient = New-Object System.Windows.Forms.CheckBox
+		$chkProtectedClient.Location = New-Object System.Drawing.Point(($leftMargin + 140), $y)
+		$chkProtectedClient.Size = New-Object System.Drawing.Size(200, $labelHeight)
+		$chkProtectedClient.Text = "Protected client"
+		$chkProtectedClient.Checked = $false
+		$form.Controls.Add($chkProtectedClient)
+		$toolTip.SetToolTip($chkProtectedClient, "Enable Restricted Admin mode. Prevents pasting content INTO sandbox via clipboard")
 
 		$y += $labelHeight + 5
 
@@ -3776,6 +3785,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			MapFolderReadOnly = $chkMapFolderReadOnly.Checked
 				MemoryInMB = [int]$cmbMemory.SelectedItem
 				vGPU = $cmbvGPU.SelectedItem
+				ProtectedClient = $chkProtectedClient.Checked
 				Script = $resultScript
 			}
 			$form.Close()
@@ -4106,6 +4116,9 @@ if ($dialogResult.MemoryInMB) {
 }
 if (![string]::IsNullOrWhiteSpace($dialogResult.vGPU)) {
 	$sandboxParams.vGPU = $dialogResult.vGPU
+}
+if ($dialogResult.ProtectedClient) {
+	$sandboxParams.ProtectedClient = $dialogResult.ProtectedClient
 }
 if ($dialogResult.MapFolderReadOnly) {
 	$sandboxParams.MapFolderReadOnly = $dialogResult.MapFolderReadOnly

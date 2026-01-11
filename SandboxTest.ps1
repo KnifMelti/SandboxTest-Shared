@@ -16,7 +16,8 @@
 		[ValidateRange(2048, 999999)]
 		[int] $MemoryInMB = 4096,
 		[ValidateSet("Default", "Enable", "Disable")]
-		[string] $vGPU = "Default"
+		[string] $vGPU = "Default",
+		[switch] $ProtectedClient
 	)
 	<#
 	.SYNOPSIS
@@ -1136,6 +1137,7 @@ Write-Host "Press any key to close this window..." -ForegroundColor Yellow
 <Networking>$Networking</Networking>
 <MemoryInMB>$MemoryInMB</MemoryInMB>
 <vGPU>$vGPU</vGPU>
+<ProtectedClient>$(if ($ProtectedClient) { "Enable" } else { "Disable" })</ProtectedClient>
 <MappedFolders>
 $mappedFolders
 </MappedFolders>
