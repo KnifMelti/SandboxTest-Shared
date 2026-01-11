@@ -214,7 +214,7 @@ function Show-PackageListEditor {
 	$editorForm.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size(420, 370) }
 		"ScriptMapping" { New-Object System.Drawing.Size(510, 505) }
-		"ConfigEdit" { New-Object System.Drawing.Size(420, 370) }
+		"ConfigEdit" { New-Object System.Drawing.Size(510, 505) }
 	}
 	$editorForm.StartPosition = "CenterParent"
 	$editorForm.FormBorderStyle = "FixedDialog"
@@ -242,7 +242,7 @@ function Show-PackageListEditor {
 	$controlWidth = switch ($EditorMode) {
 		"PackageList" { 380 }
 		"ScriptMapping" { 470 }
-		"ConfigEdit" { 380 }
+		"ConfigEdit" { 470 }
 	}
 
 	# List name field - only for PackageList mode
@@ -282,7 +282,7 @@ function Show-PackageListEditor {
 	$txtPackages.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size($controlWidth, 140) }
 		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 270) }
-		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 140) }
+		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 270) }
 	}
 	$txtPackages.Multiline = $true
 	$txtPackages.ScrollBars = "Vertical"
@@ -321,7 +321,7 @@ function Show-PackageListEditor {
 	$y += switch ($EditorMode) {
 		"PackageList" { 175 }
 		"ScriptMapping" { 320 }
-		"ConfigEdit" { 175 }
+		"ConfigEdit" { 320 }
 	}
 
 	# Help text
@@ -330,7 +330,7 @@ function Show-PackageListEditor {
 	$lblHelp.Size = switch ($EditorMode) {
 		"PackageList" { New-Object System.Drawing.Size($controlWidth, 50) }
 		"ScriptMapping" { New-Object System.Drawing.Size($controlWidth, 70) }
-		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 50) }
+		"ConfigEdit" { New-Object System.Drawing.Size($controlWidth, 70) }
 	}
 	$lblHelp.Text = switch ($EditorMode) {
 		"PackageList" { "Example: Notepad++.Notepad++`nUse WinGet package IDs from winget search`nComments: Lines starting with # are ignored" }
@@ -341,7 +341,7 @@ Patterns are matched against folder/file names (case-insensitive).
 Wildcards: * (any characters), ? (single character)
 Comments: Lines starting with # are ignored.
 "@ }
-		"ConfigEdit" { "INI format configuration file.`n[Lists] section: Package list states (1=enabled, 0=disabled)`n[Extensions] section: File extension mappings (ext=ListName)" }
+		"ConfigEdit" { "INI format configuration file.`n[Lists] section: Package list states (1=enabled, 0=disabled)`n[Extensions] section: File extension mappings (ext=ListName)`nComments: Lines starting with # are ignored." }
 	}
 	$lblHelp.Name = 'lblHelp'  # For theme detection
 	$editorForm.Controls.Add($lblHelp)
@@ -349,7 +349,7 @@ Comments: Lines starting with # are ignored.
 	$y += switch ($EditorMode) {
 		"PackageList" { 50 }
 		"ScriptMapping" { 90 }
-		"ConfigEdit" { 50 }
+		"ConfigEdit" { 90 }
 	}
 
 	# Buttons
@@ -3167,7 +3167,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$chkNetworking = New-Object System.Windows.Forms.CheckBox
 		$chkNetworking.Location = New-Object System.Drawing.Point($leftMargin, $y)
 		$chkNetworking.Size = New-Object System.Drawing.Size(130, $labelHeight)
-		$chkNetworking.Text = "Enable networking"
+		$chkNetworking.Text = "Enable Networking"
 		$chkNetworking.Checked = $true
 		$tooltipNetworking = New-Object System.Windows.Forms.ToolTip
 		$tooltipNetworking.SetToolTip($chkNetworking, "Enable network access in sandbox (required for WinGet downloads)")
@@ -3227,10 +3227,10 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$chkProtectedClient = New-Object System.Windows.Forms.CheckBox
 		$chkProtectedClient.Location = New-Object System.Drawing.Point(($leftMargin + 140), $y)
 		$chkProtectedClient.Size = New-Object System.Drawing.Size(200, $labelHeight)
-		$chkProtectedClient.Text = "Protected client"
+		$chkProtectedClient.Text = "Protected Client"
 		$chkProtectedClient.Checked = $false
 		$form.Controls.Add($chkProtectedClient)
-		$toolTip.SetToolTip($chkProtectedClient, "Enable Restricted Admin mode. Prevents pasting content INTO sandbox via clipboard")
+		$toolTip.SetToolTip($chkProtectedClient, "AppContainer Isolation mode. Provides extra security boundaries but restricts copy/paste of files")
 
 		$y += $labelHeight + 5
 
