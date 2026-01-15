@@ -502,9 +502,13 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 			}
 		}
 		} else {
-			# Networking is disabled - skip WinGet preparation entirely
+			# Skip WinGet preparation - either networking is disabled or user requested skip
 			Write-Information '--> Skipping WinGet Preparation'
-			Write-Information 'Networking is disabled - WinGet installation will be skipped in sandbox'
+			if ($Networking -ne "Enable") {
+				Write-Information 'Networking is disabled - WinGet installation will be skipped in sandbox'
+			} else {
+				Write-Information 'WinGet installation skipped by user request (network-only mode)'
+			}
 			$script:AppInstallerDependencies = @()
 		}
 
@@ -913,8 +917,13 @@ if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWin
 	Write-Host '================================================' -ForegroundColor Cyan
 	Write-Host '--> WinGet Installation Skipped' -ForegroundColor Yellow
 	Write-Host '================================================' -ForegroundColor Cyan
-	Write-Host '    Networking is disabled - WinGet requires internet access' -ForegroundColor Yellow
-	Write-Host '    Package installation will be skipped' -ForegroundColor Yellow
+	if ("$Networking" -ne "Enable") {
+		Write-Host '    Networking is disabled - WinGet requires internet access' -ForegroundColor Yellow
+		Write-Host '    Package installation will be skipped' -ForegroundColor Yellow
+	} else {
+		Write-Host '    WinGet installation skipped by user request' -ForegroundColor Yellow
+		Write-Host '    Pre-install shortcuts and settings still apply' -ForegroundColor Cyan
+	}
 }
 
 Write-Host ''
@@ -935,7 +944,11 @@ if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWin
 	winget settings --Enable LocalArchiveMalwareScanOverride | Out-Null
 	Set-WinHomeLocation -GeoID $($script:HostGeoID)
 } else {
-	Write-Host '    [2/2] Skipping WinGet settings (networking disabled)...' -ForegroundColor Yellow
+	if ("$Networking" -ne "Enable") {
+		Write-Host '    [2/2] Skipping WinGet settings (networking disabled)...' -ForegroundColor Yellow
+	} else {
+		Write-Host '    [2/2] Skipping WinGet settings (WinGet skipped by user)...' -ForegroundColor Yellow
+	}
 	Set-WinHomeLocation -GeoID $($script:HostGeoID)
 }
 Write-Host '    Configuration completed!' -ForegroundColor Green
@@ -999,7 +1012,11 @@ if (`$autoInstallFile -and (Test-Path `$autoInstallFile.FullName)) {
 		Write-Host '================================================' -ForegroundColor Cyan
 		Write-Host '--> AutoInstall Package Installation Skipped' -ForegroundColor Yellow
 		Write-Host '================================================' -ForegroundColor Cyan
-		Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
+		if ("$Networking" -ne "Enable") {
+			Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
+		} else {
+			Write-Host '    WinGet skipped - package installation not available' -ForegroundColor Yellow
+		}
 
 		# Clean up packages-autoinstall.txt file
 		if (`$autoInstallFile -and (Test-Path `$autoInstallFile.FullName)) {
@@ -1067,8 +1084,12 @@ if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {
 		Write-Host '================================================' -ForegroundColor Cyan
 		Write-Host '--> Package Installation Skipped' -ForegroundColor Yellow
 		Write-Host '================================================' -ForegroundColor Cyan
-		Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
-		Write-Host '    WinGet requires internet access to download packages' -ForegroundColor Yellow
+		if ("$Networking" -ne "Enable") {
+			Write-Host '    Networking is disabled - cannot install packages' -ForegroundColor Yellow
+			Write-Host '    WinGet requires internet access to download packages' -ForegroundColor Yellow
+		} else {
+			Write-Host '    WinGet skipped - package installation not available' -ForegroundColor Yellow
+		}
 
 		# Clean up packages.txt file
 		if (`$packageListFile -and (Test-Path `$packageListFile.FullName)) {

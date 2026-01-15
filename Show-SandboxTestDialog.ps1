@@ -3235,79 +3235,11 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$y += $labelHeight + 5
 
 
-		# Memory dropdown - First detect available system RAM
-		# Get total physical memory and calculate safe maximum (75% of total RAM)
-		# Uses multiple methods (no elevation required):
-		# 1. ComputerInfo (Win10+, preferred - fastest and no CIM)
-		# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
-		# 3. WMI via Get-WmiObject (older systems)
-		# 4. Hard-coded fallback (8 GB)
-		Write-Host "Detecting system memory...`t" -NoNewline -ForegroundColor Cyan
-		try {
-			$totalMemoryMB = $null
+		# Memory dropdown - Dynamic detection on first dropdown click (Issue #16)
+		# Detection is deferred until user clicks the dropdown to avoid startup delay
+		$script:memoryDetected = $false
+		$script:tooltipMemory = New-Object System.Windows.Forms.ToolTip
 
-			# Method 1: Try ComputerInfo (Windows 10+ preferred method - no CIM/WMI)
-			try {
-				# Suppress progress output from Get-ComputerInfo
-				$prevProgressPreference = $ProgressPreference
-				$ProgressPreference = 'SilentlyContinue'
-				$computerInfo = Get-ComputerInfo -Property CsTotalPhysicalMemory -ErrorAction Stop
-				$ProgressPreference = $prevProgressPreference
-				$totalMemoryMB = [int]($computerInfo.CsTotalPhysicalMemory / 1MB)
-				Write-Host "Done" -ForegroundColor Green
-				Write-Verbose "Memory detected via ComputerInfo: $totalMemoryMB MB"
-			}
-			catch {
-				# Restore progress preference on error
-				if ($prevProgressPreference) { $ProgressPreference = $prevProgressPreference }
-				# Method 2: Try CIM (works without elevation on most systems)
-				try {
-					$totalMemoryMB = [int]((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
-					Write-Host "Done" -ForegroundColor Green
-					Write-Verbose "Memory detected via CIM: $totalMemoryMB MB"
-				}
-				catch {
-					# Method 3: Try WMI as last resort
-					try {
-						$totalMemoryMB = [int]((Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
-						Write-Host "Done" -ForegroundColor Green
-						Write-Verbose "Memory detected via WMI: $totalMemoryMB MB"
-					}
-					catch {
-						# All methods failed - use fallback
-						$totalMemoryMB = $null
-					}
-				}
-			}
-
-			if ($totalMemoryMB) {
-				$maxSafeMemory = [int]($totalMemoryMB * 0.75)
-			}
-			else {
-				throw "All memory detection methods failed"
-			}
-		}
-		catch {
-			# Fallback if all detection methods fail
-			Write-Host " Using default" -ForegroundColor Yellow
-			$totalMemoryMB = 8192
-			$maxSafeMemory = 6144
-			Write-Verbose "Could not detect system memory, using fallback: $totalMemoryMB MB (max safe: $maxSafeMemory MB)"
-		}
-
-		# Generate memory options dynamically based on available RAM
-		# Start with common increments and filter based on maxSafeMemory
-		$allMemoryOptions = @(2048, 4096, 6144, 8192, 10240, 12288, 16384, 20480, 24576, 32768, 49152, 65536)
-		$memoryOptions = $allMemoryOptions | Where-Object { $_ -le $maxSafeMemory }
-
-		# Ensure minimum option exists (2048 MB required by Windows Sandbox)
-		if (-not $memoryOptions -or $memoryOptions.Count -eq 0) {
-			$memoryOptions = @(2048)
-		}
-
-		$defaultSelected = -1
-
-		# Now create the UI controls with the detected memory values
 		$lblMemory = New-Object System.Windows.Forms.Label
 		$lblMemory.Location = New-Object System.Drawing.Point($leftMargin, $y)
 		$lblMemory.Size = New-Object System.Drawing.Size(120, $labelHeight)
@@ -3319,34 +3251,109 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$cmbMemory.Size = New-Object System.Drawing.Size(120, $controlHeight)
 		$cmbMemory.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
-		# Populate with pre-calculated memory options
-		foreach ($memOption in $memoryOptions) {
-			if ($memOption -le $maxSafeMemory) {
-				[void]$cmbMemory.Items.Add($memOption.ToString())
-				if ($memOption -eq 4096) { $defaultSelected = $cmbMemory.Items.Count - 1 }
+		# Initialize with default value - detection happens on first dropdown click
+		[void]$cmbMemory.Items.Add("4096")
+		$cmbMemory.SelectedIndex = 0
+		$script:tooltipMemory.SetToolTip($cmbMemory, "Click dropdown to detect available memory options")
+
+		# Event handler for lazy memory detection on first dropdown click
+		$cmbMemory.add_DropDown({
+			if (-not $script:memoryDetected) {
+				$script:memoryDetected = $true
+
+				# Remember current selection
+				$previousSelection = $cmbMemory.SelectedItem
+
+				# Detect system memory using multiple methods (no elevation required):
+				# 1. ComputerInfo (Win10+, preferred - fastest and no CIM)
+				# 2. Win32_ComputerSystem via Get-CimInstance (fallback)
+				# 3. WMI via Get-WmiObject (older systems)
+				# 4. Hard-coded fallback (8 GB)
+				$totalMemoryMB = $null
+				$maxSafeMemory = $null
+
+				try {
+					# Method 1: Try ComputerInfo (Windows 10+ preferred method - no CIM/WMI)
+					try {
+						$prevProgressPreference = $ProgressPreference
+						$ProgressPreference = 'SilentlyContinue'
+						$computerInfo = Get-ComputerInfo -Property CsTotalPhysicalMemory -ErrorAction Stop
+						$ProgressPreference = $prevProgressPreference
+						$totalMemoryMB = [int]($computerInfo.CsTotalPhysicalMemory / 1MB)
+						Write-Verbose "Memory detected via ComputerInfo: $totalMemoryMB MB"
+					}
+					catch {
+						if ($prevProgressPreference) { $ProgressPreference = $prevProgressPreference }
+						# Method 2: Try CIM (works without elevation on most systems)
+						try {
+							$totalMemoryMB = [int]((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+							Write-Verbose "Memory detected via CIM: $totalMemoryMB MB"
+						}
+						catch {
+							# Method 3: Try WMI as last resort
+							try {
+								$totalMemoryMB = [int]((Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1MB)
+								Write-Verbose "Memory detected via WMI: $totalMemoryMB MB"
+							}
+							catch {
+								$totalMemoryMB = $null
+							}
+						}
+					}
+
+					if ($totalMemoryMB) {
+						$maxSafeMemory = [int]($totalMemoryMB * 0.75)
+					}
+					else {
+						throw "All memory detection methods failed"
+					}
+				}
+				catch {
+					# Fallback if all detection methods fail
+					$totalMemoryMB = 8192
+					$maxSafeMemory = 6144
+					Write-Verbose "Could not detect system memory, using fallback: $totalMemoryMB MB (max safe: $maxSafeMemory MB)"
+				}
+
+				# Generate memory options dynamically based on available RAM
+				$allMemoryOptions = @(2048, 4096, 6144, 8192, 10240, 12288, 16384, 20480, 24576, 32768, 49152, 65536)
+				$memoryOptions = $allMemoryOptions | Where-Object { $_ -le $maxSafeMemory }
+
+				# Ensure minimum option exists (2048 MB required by Windows Sandbox)
+				if (-not $memoryOptions -or $memoryOptions.Count -eq 0) {
+					$memoryOptions = @(2048)
+				}
+
+				# Clear and repopulate with detected options
+				$cmbMemory.Items.Clear()
+				$defaultIndex = -1
+				$index = 0
+				foreach ($memOption in $memoryOptions) {
+					[void]$cmbMemory.Items.Add($memOption.ToString())
+					if ($memOption -eq 4096) { $defaultIndex = $index }
+					$index++
+				}
+
+				# Restore previous selection if still valid, otherwise use default
+				$previousIndex = $cmbMemory.Items.IndexOf($previousSelection)
+				if ($previousIndex -ge 0) {
+					$cmbMemory.SelectedIndex = $previousIndex
+				}
+				elseif ($defaultIndex -ge 0) {
+					$cmbMemory.SelectedIndex = $defaultIndex
+				}
+				elseif ($cmbMemory.Items.Count -gt 0) {
+					$cmbMemory.SelectedIndex = $cmbMemory.Items.Count - 1
+				}
+
+				# Update tooltip with detected memory info
+				$highestOption = if ($memoryOptions.Count -gt 0) { $memoryOptions[-1] } else { 2048 }
+				$highestOptionGB = [math]::Round($highestOption / 1024, 1)
+				$totalGB = [math]::Round($totalMemoryMB / 1024, 1)
+				$script:tooltipMemory.SetToolTip($cmbMemory, "RAM for sandbox. Your system: $totalGB GB total. Highest safe option: $highestOptionGB GB (leaves 25% for Windows)")
 			}
-		}
+		})
 
-		# Set default selection (4096 MB if available, otherwise the highest safe option)
-		if ($defaultSelected -ge 0) {
-			$cmbMemory.SelectedIndex = $defaultSelected
-		}
-		elseif ($cmbMemory.Items.Count -gt 0) {
-			$cmbMemory.SelectedIndex = $cmbMemory.Items.Count - 1  # Select highest available
-		}
-		else {
-			# Extreme fallback: add minimum required memory
-			[void]$cmbMemory.Items.Add("2048")
-			$cmbMemory.SelectedIndex = 0
-		}
-
-		# Build helpful tooltip showing available RAM and highest option
-		$highestOption = if ($memoryOptions.Count -gt 0) { $memoryOptions[-1] } else { 2048 }
-		$highestOptionGB = [math]::Round($highestOption / 1024, 1)
-		$totalGB = [math]::Round($totalMemoryMB / 1024, 1)
-
-		$tooltipMemory = New-Object System.Windows.Forms.ToolTip
-		$tooltipMemory.SetToolTip($cmbMemory, "RAM for sandbox. Your system: $totalGB GB total. Highest safe option: $highestOptionGB GB (leaves 25% for Windows)")
 		$form.Controls.Add($cmbMemory)
 
 		$y += $labelHeight + 5
