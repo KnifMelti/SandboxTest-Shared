@@ -683,6 +683,25 @@ function Get-WindowsThemeSetting {
 	}
 }
 
+function Test-SystemUsesLightTheme {
+	<#
+	.SYNOPSIS
+	Tests if Windows is using light theme
+
+	.DESCRIPTION
+	Returns $true if Windows is using light theme, $false for dark theme.
+	This is the inverse of Get-WindowsThemeSetting.
+
+	.OUTPUTS
+	Boolean - $true for light mode, $false for dark mode
+
+	.EXAMPLE
+	if (Test-SystemUsesLightTheme) { Write-Host "Light mode" }
+	#>
+
+	return -not (Get-WindowsThemeSetting)
+}
+
 #endregion
 
 #region SandboxStart Theme Preferences

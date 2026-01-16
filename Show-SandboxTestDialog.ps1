@@ -1524,6 +1524,21 @@ function global:Show-ThemeContextMenu {
 	.PARAMETER UpdateButtonColor
 	The color to use for the update button
 
+	.PARAMETER WorkingDir
+	Optional working directory for shell integration (SandboxStart only)
+
+	.PARAMETER TestRegKey
+	Optional scriptblock for testing registry keys
+
+	.PARAMETER TestContextMenu
+	Optional scriptblock for testing context menu installation
+
+	.PARAMETER UpdateContextMenu
+	Optional scriptblock for updating context menu
+
+	.PARAMETER AppIcon
+	Optional icon for message dialogs
+
 	.OUTPUTS
 	ContextMenuStrip object
 	#>
@@ -1533,7 +1548,17 @@ function global:Show-ThemeContextMenu {
 		[System.Windows.Forms.Form]$Form,
 
 		[Parameter(Mandatory)]
-		[System.Drawing.Color]$UpdateButtonColor
+		[System.Drawing.Color]$UpdateButtonColor,
+
+		[string]$WorkingDir,
+
+		[scriptblock]$TestRegKey,
+
+		[scriptblock]$TestContextMenu,
+
+		[scriptblock]$UpdateContextMenu,
+
+		[System.Drawing.Icon]$AppIcon
 	)
 
 	# Get current theme preference
@@ -1551,6 +1576,11 @@ function global:Show-ThemeContextMenu {
 	# Store references for use in event handlers
 	$menuForm = $Form
 	$menuColor = $UpdateButtonColor
+	$menuWorkingDir = $WorkingDir
+	$menuTestRegKey = $TestRegKey
+	$menuTestContextMenu = $TestContextMenu
+	$menuUpdateContextMenu = $UpdateContextMenu
+	$menuAppIcon = $AppIcon
 
 	# Add "Theme" header (disabled, acts as label)
 	$headerItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1572,7 +1602,7 @@ function global:Show-ThemeContextMenu {
 	$autoItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Auto"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($autoItem) | Out-Null
 
@@ -1584,7 +1614,7 @@ function global:Show-ThemeContextMenu {
 	$lightItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Light"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($lightItem) | Out-Null
 
@@ -1596,7 +1626,7 @@ function global:Show-ThemeContextMenu {
 	$darkItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Dark"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($darkItem) | Out-Null
 
@@ -1610,9 +1640,80 @@ function global:Show-ThemeContextMenu {
 	$customItem.BackColor = $menuBackColor
 	$customItem.ForeColor = $menuForeColor
 	$customItem.Add_Click({
-			Show-ColorPickerDialog -ParentForm $menuForm -UpdateButtonColor $menuColor
+			Show-ColorPickerDialog -ParentForm $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($customItem) | Out-Null
+
+	# Add Context Menu Integration if WorkingDir is provided and SandboxStart.ps1 exists
+	if ($WorkingDir -and $TestContextMenu -and $UpdateContextMenu) {
+		$sandboxStartScript = Join-Path $WorkingDir 'SandboxStart.ps1'
+		if (Test-Path $sandboxStartScript) {
+			# Create menu item
+			$menuContextIntegration = New-Object System.Windows.Forms.ToolStripMenuItem
+			$menuContextIntegration.BackColor = $menuBackColor
+			$menuContextIntegration.ForeColor = $menuForeColor
+
+			$isInstalled = & $TestContextMenu
+
+			$menuContextIntegration.Text = if ($isInstalled) {
+				"Disable Context Menu Integration"
+			} else {
+				"Enable Context Menu Integration"
+			}
+
+			$menuContextIntegration.Add_Click({
+				param($menuItem, $e)
+				$currentlyInstalled = & $menuTestContextMenu
+
+				if ($currentlyInstalled) {
+					# Disable
+					$result = Show-ThemedMessageDialog `
+						-Title "Disable Context Menu Integration" `
+						-Message "Remove 'Test in Windows Sandbox' from folder and file context menus?" `
+						-Buttons "OKCancel" `
+						-Icon "Question" `
+						-ParentIcon $menuAppIcon
+
+					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+						if (& $menuUpdateContextMenu -WorkingDir $menuWorkingDir -Remove $true) {
+							Show-ThemedMessageDialog `
+								-Title "Success" `
+								-Message "Context menu integration has been disabled." `
+								-Buttons "OK" `
+								-Icon "Information" `
+								-ParentIcon $menuAppIcon
+							$menuItem.Text = "Enable Context Menu Integration"
+						}
+					}
+				}
+				else {
+					# Enable
+					$result = Show-ThemedMessageDialog `
+						-Title "Enable Context Menu Integration" `
+						-Message "Add 'Test in Windows Sandbox' to folder and file context menus?`n`nThis allows you to right-click folders/files and test them directly." `
+						-Buttons "OKCancel" `
+						-Icon "Question" `
+						-ParentIcon $menuAppIcon
+
+					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+						if (& $menuUpdateContextMenu -WorkingDir $menuWorkingDir -Remove $false) {
+							Show-ThemedMessageDialog `
+								-Title "Success" `
+								-Message "Context menu integration has been enabled.`n`nYou can now right-click folders and files to test them in Windows Sandbox." `
+								-Buttons "OK" `
+								-Icon "Information" `
+								-ParentIcon $menuAppIcon
+							$menuItem.Text = "Disable Context Menu Integration"
+						}
+					}
+				}
+			}.GetNewClosure())
+
+			# Insert at the beginning of the context menu (before theme options)
+			$contextMenu.Items.Insert(0, (New-Object System.Windows.Forms.ToolStripSeparator))
+			$contextMenu.Items.Insert(0, $menuContextIntegration)
+		}
+	}
 
 	return $contextMenu
 }
@@ -1627,6 +1728,21 @@ function global:Show-ColorPickerDialog {
 
 	.PARAMETER UpdateButtonColor
 	The color to use for the update button
+
+	.PARAMETER WorkingDir
+	Optional working directory for shell integration
+
+	.PARAMETER TestRegKey
+	Optional scriptblock for testing registry keys
+
+	.PARAMETER TestContextMenu
+	Optional scriptblock for testing context menu installation
+
+	.PARAMETER UpdateContextMenu
+	Optional scriptblock for updating context menu
+
+	.PARAMETER AppIcon
+	Optional icon for message dialogs
 	#>
 
 	param(
@@ -1634,12 +1750,29 @@ function global:Show-ColorPickerDialog {
 		[System.Windows.Forms.Form]$ParentForm,
 
 		[Parameter(Mandatory)]
-		[System.Drawing.Color]$UpdateButtonColor
+		[System.Drawing.Color]$UpdateButtonColor,
+
+		[string]$WorkingDir,
+
+		[scriptblock]$TestRegKey,
+
+		[scriptblock]$TestContextMenu,
+
+		[scriptblock]$UpdateContextMenu,
+
+		[System.Drawing.Icon]$AppIcon
 	)
 
 	# Save original theme state (for Cancel button to restore)
 	$originalTheme = Get-SandboxStartThemePreference
 	$originalColors = Get-SandboxStartCustomColors
+
+	# Store shell integration params for closures
+	$localWorkingDir = $WorkingDir
+	$localTestRegKey = $TestRegKey
+	$localTestContextMenu = $TestContextMenu
+	$localUpdateContextMenu = $UpdateContextMenu
+	$localAppIcon = $AppIcon
 
 	# Load current custom colors
 	$currentColors = Get-SandboxStartCustomColors
@@ -2381,7 +2514,7 @@ function global:Show-ColorPickerDialog {
 		Set-DarkTitleBar -Form $ParentForm -UseDarkMode $isDark
 
 		# Refresh context menu to show Custom checkmark
-		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
 	}.GetNewClosure())
 	$dialog.Controls.Add($okButton)
 
@@ -2408,7 +2541,7 @@ function global:Show-ColorPickerDialog {
 		}
 
 		# Restore context menu
-		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
 	}.GetNewClosure())
 	$dialog.Controls.Add($cancelButton)
 
@@ -3893,12 +4026,10 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
 		Set-ThemeToForm -Form $form -UpdateButtonColor $updateButtonGreen
 
-		# Attach right-click context menu for theme selection (AFTER theme is applied)
-		$contextMenu = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen
-		$form.ContextMenuStrip = $contextMenu
-
-		# Add Context Menu Integration toggle ONLY if running in SandboxStart (not WAU-Settings-GUI)
+		# Prepare shell integration scriptblocks (only for SandboxStart, not WAU-Settings-GUI)
 		$sandboxStartScript = Join-Path $Script:WorkingDir 'SandboxStart.ps1'
+		$shellIntegrationParams = @{}
+
 		if (Test-Path $sandboxStartScript) {
 			# Capture WorkingDir in local variable for use in scriptblocks
 			$localWorkingDir = $Script:WorkingDir
@@ -3923,10 +4054,10 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$testContextMenu = {
 				$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
 				$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
-				
+
 				$folderExists = & $testRegKey $folderKeyReg
 				$fileExists = & $testRegKey $fileKeyReg
-				
+
 				return ($folderExists -and $fileExists)
 			}
 
@@ -3998,68 +4129,18 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				}
 			}
 
-			# Create menu item
-			$menuContextIntegration = New-Object System.Windows.Forms.ToolStripMenuItem
-			$isInstalled = & $testContextMenu
-
-			$menuContextIntegration.Text = if ($isInstalled) {
-				"Disable Context Menu Integration"
-			} else {
-				"Enable Context Menu Integration"
+			$shellIntegrationParams = @{
+				WorkingDir = $localWorkingDir
+				TestRegKey = $testRegKey
+				TestContextMenu = $testContextMenu
+				UpdateContextMenu = $updateContextMenu
+				AppIcon = $appIcon
 			}
-
-			$menuContextIntegration.Add_Click({
-				param($menuItem, $e)
-				$currentlyInstalled = & $testContextMenu
-
-				if ($currentlyInstalled) {
-					# Disable
-					$result = Show-ThemedMessageDialog `
-						-Title "Disable Context Menu Integration" `
-						-Message "Remove 'Test in Windows Sandbox' from folder and file context menus?" `
-						-Buttons "OKCancel" `
-						-Icon "Question" `
-						-ParentIcon $appIcon
-
-					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-						if (& $updateContextMenu -WorkingDir $localWorkingDir -Remove $true) {
-							Show-ThemedMessageDialog `
-								-Title "Success" `
-								-Message "Context menu integration has been disabled." `
-								-Buttons "OK" `
-								-Icon "Information" `
-								-ParentIcon $appIcon
-							$menuItem.Text = "Enable Context Menu Integration"
-						}
-					}
-				}
-				else {
-					# Enable
-					$result = Show-ThemedMessageDialog `
-						-Title "Enable Context Menu Integration" `
-						-Message "Add 'Test in Windows Sandbox' to folder and file context menus?`n`nThis allows you to right-click folders/files and test them directly." `
-						-Buttons "OKCancel" `
-						-Icon "Question" `
-						-ParentIcon $appIcon
-
-					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-						if (& $updateContextMenu -WorkingDir $localWorkingDir -Remove $false) {
-							Show-ThemedMessageDialog `
-								-Title "Success" `
-								-Message "Context menu integration has been enabled.`n`nYou can now right-click folders and files to test them in Windows Sandbox." `
-								-Buttons "OK" `
-								-Icon "Information" `
-								-ParentIcon $appIcon
-							$menuItem.Text = "Disable Context Menu Integration"
-						}
-					}
-				}
-			}.GetNewClosure())
-
-			# Insert at the beginning of the context menu (before theme options)
-			$contextMenu.Items.Insert(0, (New-Object System.Windows.Forms.ToolStripSeparator))
-			$contextMenu.Items.Insert(0, $menuContextIntegration)
 		}
+
+		# Attach right-click context menu for theme selection (AFTER theme is applied)
+		$contextMenu = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen @shellIntegrationParams
+		$form.ContextMenuStrip = $contextMenu
 
 		# Show dialog (modal)
 		[void]$form.ShowDialog()
