@@ -4054,11 +4054,13 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$testContextMenu = {
 				$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
 				$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+				$driveKeyReg = 'HKCU\Software\Classes\Drive\shell\SandboxStart'
 
 				$folderExists = & $testRegKey $folderKeyReg
 				$fileExists = & $testRegKey $fileKeyReg
+				$driveExists = & $testRegKey $driveKeyReg
 
-				return ($folderExists -and $fileExists)
+				return ($folderExists -and $fileExists -and $driveExists)
 			}
 
 			# Update context menu integration
@@ -4073,6 +4075,8 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					$folderKey = 'HKCU:\Software\Classes\Directory\shell\SandboxStart'
 					$folderKeyReg = 'HKCU\Software\Classes\Directory\shell\SandboxStart'
 					$fileKeyReg = 'HKCU\Software\Classes\*\shell\SandboxStart'
+					$driveKey = 'HKCU:\Software\Classes\Drive\shell\SandboxStart'
+					$driveKeyReg = 'HKCU\Software\Classes\Drive\shell\SandboxStart'
 
 					if ($Remove) {
 						Write-Verbose "Removing context menu entries..."
@@ -4087,6 +4091,12 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 						if (& $testRegKey $fileKeyReg) {
 							$null = reg.exe delete "$fileKeyReg" /f 2>&1
 							Write-Verbose "Removed file key"
+						}
+
+						# Remove drive context menu (can use Remove-Item for non-* paths)
+						if (& $testRegKey $driveKeyReg) {
+							Remove-Item $driveKey -Recurse -Force -ErrorAction Stop
+							Write-Verbose "Removed drive key"
 						}
 
 						return $true
@@ -4118,6 +4128,22 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					$null = reg.exe add "$fileKeyReg" /v Icon /d "$iconPath" /f 2>&1
 					$null = reg.exe add "$fileCommandKeyReg" /ve /d "$fileCommand" /f 2>&1
 					Write-Verbose "File context menu created"
+
+					# Create drive context menu (same pattern as folder)
+					Write-Verbose "Creating drive context menu..."
+					if (-not (Test-Path $driveKey)) {
+						Write-Verbose "Creating new drive key: $driveKey"
+						$null = New-Item -Path $driveKey -Force -ErrorAction Stop
+					}
+					$null = New-ItemProperty -Path $driveKey -Name '(Default)' -Value 'Test in Windows Sandbox' -PropertyType String -Force -ErrorAction Stop
+					$null = New-ItemProperty -Path $driveKey -Name 'Icon' -Value $iconPath -PropertyType String -Force -ErrorAction Stop
+
+					$driveCommandKey = "$driveKey\command"
+					if (-not (Test-Path $driveCommandKey)) {
+						$null = New-Item -Path $driveCommandKey -Force -ErrorAction Stop
+					}
+					$null = New-ItemProperty -Path $driveCommandKey -Name '(Default)' -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -FolderPath `"%V`"" -PropertyType String -Force -ErrorAction Stop
+					Write-Verbose "Drive context menu created"
 
 					return $true
 				}
