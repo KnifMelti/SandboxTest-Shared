@@ -626,6 +626,7 @@ function global:Update-FormFromSelection {
 		[System.Windows.Forms.CheckBox]$chkNetworking,
 		[System.Windows.Forms.CheckBox]$chkSkipWinGet,
 		[System.Windows.Forms.ComboBox]$cmbInstallPackages,
+		[System.Windows.Forms.CheckBox]$chkMapFolderReadOnly,
 		[string]$wsbDir
 	)
 
@@ -737,6 +738,11 @@ function global:Update-FormFromSelection {
 		$matchingScript = Find-MatchingScript -Path $selectedDir
 		$scriptName = $matchingScript.Replace('.ps1', '')
 
+		# Auto-disable read-only for WAU installations
+		if ($scriptName -eq 'Std-WAU') {
+			$chkMapFolderReadOnly.Checked = $false
+		}
+
 		# Load script using the dynamic loading function
 		$scriptContent = Get-DefaultScriptContent -ScriptName $scriptName -WsbDir $wsbDir
 
@@ -750,7 +756,11 @@ function global:Update-FormFromSelection {
 				$lblStatus.Text = "Status: Mapping fallback to Std-Install.ps1"
 			}
 		} else {
-			$lblStatus.Text = "Status: Mapping -> $matchingScript"
+			if ($scriptName -eq 'Std-WAU') {
+				$lblStatus.Text = "Status: Mapping -> $matchingScript (R/O disabled)"
+			} else {
+				$lblStatus.Text = "Status: Mapping -> $matchingScript"
+			}
 		}
 
 		# Inject chosen folder name
@@ -2849,8 +2859,8 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				$selectedDir = Split-Path $folderDialog.FileName
 
 				# Use shared function to update form (folder)
-				
-Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+
+Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
 			}
 		})
 		$form.Controls.Add($btnBrowse)
@@ -2912,7 +2922,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				$selectedFile = [System.IO.Path]::GetFileName($selectedPath)
 
 				# Use shared function to update form (file)
-				Update-FormFromSelection -SelectedPath $selectedPath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+				Update-FormFromSelection -SelectedPath $selectedPath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
 			}
 		})
 		$form.Controls.Add($btnBrowseFile)
@@ -4011,12 +4021,12 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			# Set initial paths from context menu parameters (and process them)
 			if ($script:InitialFolderPath -and (Test-Path $script:InitialFolderPath)) {
 				# Folder selected from context menu
-				Update-FormFromSelection -SelectedPath $script:InitialFolderPath -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+				Update-FormFromSelection -SelectedPath $script:InitialFolderPath -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
 		}
 			if ($script:InitialFilePath -and (Test-Path $script:InitialFilePath)) {
 				# File selected from context menu
 				$selectedFile = [System.IO.Path]::GetFileName($script:InitialFilePath)
-				Update-FormFromSelection -SelectedPath $script:InitialFilePath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -wsbDir $wsbDir
+				Update-FormFromSelection -SelectedPath $script:InitialFilePath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
 		}
 
 
