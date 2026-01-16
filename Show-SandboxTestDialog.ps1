@@ -4022,12 +4022,16 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			if ($script:InitialFolderPath -and (Test-Path $script:InitialFolderPath)) {
 				# Folder selected from context menu
 				Update-FormFromSelection -SelectedPath $script:InitialFolderPath -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
-		}
+			}
+			elseif ($txtMapFolder.Text -and (Test-Path $txtMapFolder.Text)) {
+				# Auto-loaded folder from -SandboxTest parameter (latest MSI version folder)
+				Update-FormFromSelection -SelectedPath $txtMapFolder.Text -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
+			}
 			if ($script:InitialFilePath -and (Test-Path $script:InitialFilePath)) {
 				# File selected from context menu
 				$selectedFile = [System.IO.Path]::GetFileName($script:InitialFilePath)
 				Update-FormFromSelection -SelectedPath $script:InitialFilePath -FileName $selectedFile -txtMapFolder $txtMapFolder -txtSandboxFolderName $txtSandboxFolderName -txtScript $txtScript -lblStatus $lblStatus -btnSaveScript $btnSaveScript -chkNetworking $chkNetworking -chkSkipWinGet $chkSkipWinGet -cmbInstallPackages $cmbInstallPackages -chkMapFolderReadOnly $chkMapFolderReadOnly -wsbDir $wsbDir
-		}
+			}
 
 
 
