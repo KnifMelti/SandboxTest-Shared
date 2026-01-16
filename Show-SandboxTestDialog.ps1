@@ -4142,7 +4142,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 					if (-not (Test-Path $driveCommandKey)) {
 						$null = New-Item -Path $driveCommandKey -Force -ErrorAction Stop
 					}
-					$null = New-ItemProperty -Path $driveCommandKey -Name '(Default)' -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -FolderPath `"%V`"" -PropertyType String -Force -ErrorAction Stop
+					$null = New-ItemProperty -Path $driveCommandKey -Name '(Default)' -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -FolderPath `"%V\`"" -PropertyType String -Force -ErrorAction Stop
 					Write-Verbose "Drive context menu created"
 
 					return $true
