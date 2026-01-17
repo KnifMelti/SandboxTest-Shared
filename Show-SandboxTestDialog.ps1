@@ -444,8 +444,31 @@ Comments: Lines starting with # are ignored.
 	# Add TextChanged event to enable/disable Save button based on changes
 	$txtPackages.Add_TextChanged({
 		$currentContent = $txtPackages.Text.Trim()
+
+		# Check if current content has CUSTOM header (allows saving Std-*.txt files)
+		$hasCustom = $txtPackages.Text -match '(?m)^\s*#\s+CUSTOM(?:\s|$)'
+
+		# Check if this is a default Std-*.txt file
+		$isStdFile = $false
+		if ($ListName -and $ListName -like 'Std-*') {
+			$isStdFile = $true
+		}
+
+		# Enable Save if:
+		# 1. Content has CUSTOM header (allows editing Std-* files), OR
+		# 2. Content has changed AND (it's not a Std-* file OR it has CUSTOM header)
 		$hasChanged = ($currentContent -ne $script:editorOriginalContent)
-		$btnSave.Enabled = $hasChanged
+
+		if ($hasCustom) {
+			# CUSTOM header present - always allow saving
+			$btnSave.Enabled = $hasChanged
+		} elseif ($isStdFile) {
+			# Std-* file without CUSTOM header - disable save
+			$btnSave.Enabled = $false
+		} else {
+			# Regular file - enable if changed
+			$btnSave.Enabled = $hasChanged
+		}
 	})
 
 	$editorForm.AcceptButton = $btnSave
@@ -689,7 +712,7 @@ function global:Update-FormFromSelection {
 
 		if (Test-Path $stdFilePath) {
 			$stdFileContent = Get-Content $stdFilePath -Raw -ErrorAction SilentlyContinue
-			if ($stdFileContent -match '^\s*#\s*CUSTOM(?:\s|$)') {
+			if ($stdFileContent -match '(?m)^\s*#\s+CUSTOM(?:\s|$)') {
 				$useCustom = $true
 			}
 		}
@@ -776,7 +799,7 @@ function global:Update-FormFromSelection {
 
 			# Update Save button state
 			# Check if loaded script has CUSTOM header
-			$hasCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM(?:\s|$)'
+			$hasCustomOverride = $scriptContent -match '(?m)^\s*#\s+CUSTOM(?:\s|$)'
 			$isDefaultScript = $false
 			if (-not $hasCustomOverride) {
 				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
@@ -3709,7 +3732,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 				# Enable Save button if:
 				# 1. File has CUSTOM header (custom script - always editable)
 				# 2. File is NOT a default script (Std-*.ps1 without custom header)
-				$isCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM(?:\s|$)'
+				$isCustomOverride = $scriptContent -match '(?m)^\s*#\s+CUSTOM(?:\s|$)'
 				$isDefaultScript = Test-IsDefaultScript -FilePath $openFileDialog.FileName
 
 				if ($isCustomOverride -or -not $isDefaultScript) {
@@ -3803,7 +3826,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$btnSaveScript.Enabled = $false
 		} elseif ($script:currentScriptFile) {
 			# Check if script has CUSTOM header
-			$hasCustomOverride = $txtScript.Text -match '(?m)^\s*#\s*CUSTOM(?:\s|$)'
+			$hasCustomOverride = $txtScript.Text -match '(?m)^\s*#\s+CUSTOM(?:\s|$)'
 			$isDefaultScript = $false
 			if (-not $hasCustomOverride) {
 				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
@@ -3815,7 +3838,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$txtScript.Add_TextChanged({
 		# Check if current script has CUSTOM header
 		$currentContent = $txtScript.Text
-		$hasCustomOverride = $currentContent -match '(?m)^\s*#\s*CUSTOM(?:\s|$)'
+		$hasCustomOverride = $currentContent -match '(?m)^\s*#\s+CUSTOM(?:\s|$)'
 
 		# Check if file is a default script (but allow custom override to bypass this)
 		$isDefaultScript = $false
