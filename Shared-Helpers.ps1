@@ -1243,8 +1243,9 @@ function Sync-GitHubScriptsSelective {
 				if ($isAlwaysSync) {
 					# Check for custom override header before syncing (applies to ALL AlwaysSyncPatterns files)
 					if (Test-Path $localPath) {
-						$firstLine = Get-Content -Path $localPath -TotalCount 1 -ErrorAction SilentlyContinue
-						if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
+						$firstLines = Get-Content -Path $localPath -TotalCount 3 -ErrorAction SilentlyContinue
+						$hasCustom = $firstLines | Where-Object { $_ -match '^\s*#\s*CUSTOM(?:\s|$)' } | Select-Object -First 1
+						if ($hasCustom -match '^\s*#\s*CUSTOM(?:\s|$)') {
 							Write-Verbose "Skipping sync for custom override: $($file.name)"
 							$skippedCount++
 							continue
@@ -1336,8 +1337,9 @@ function Sync-GitHubScriptsSelective {
 				$listName = [System.IO.Path]::GetFileNameWithoutExtension($obsoleteFile)
 
 				# Check for CUSTOM - preserve user modifications
-				$firstLine = Get-Content -Path $obsoletePath -TotalCount 1 -ErrorAction SilentlyContinue
-				if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
+				$firstLines = Get-Content -Path $obsoletePath -TotalCount 3 -ErrorAction SilentlyContinue
+				$hasCustom = $firstLines | Where-Object { $_ -match '^\s*#\s*CUSTOM(?:\s|$)' } | Select-Object -First 1
+				if ($hasCustom -match '^\s*#\s*CUSTOM(?:\s|$)') {
 					Write-Verbose "Preserving custom override package list: $listName"
 					continue
 				}
@@ -1363,8 +1365,9 @@ function Sync-GitHubScriptsSelective {
 			}
 
 			# Check for CUSTOM (final protection)
-			$firstLine = Get-Content -Path $originalPath -TotalCount 1 -ErrorAction SilentlyContinue
-			if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
+			$firstLines = Get-Content -Path $originalPath -TotalCount 3 -ErrorAction SilentlyContinue
+			$hasCustom = $firstLines | Where-Object { $_ -match '^\s*#\s*CUSTOM(?:\s|$)' } | Select-Object -First 1
+			if ($hasCustom -match '^\s*#\s*CUSTOM(?:\s|$)') {
 				Write-Verbose "Preserving custom override list: $originalListName"
 				continue
 			}
@@ -1705,8 +1708,9 @@ function Initialize-PackageListMigration {
 		$listPath = Join-Path $wsbDir "$listName.txt"
 		if (Test-Path $listPath) {
 			# Check if it has CUSTOM
-			$firstLine = Get-Content -Path $listPath -TotalCount 1 -ErrorAction SilentlyContinue
-			if ($firstLine -notmatch '^\s*#\s*CUSTOM(?:\s|$)') {
+			$firstLines = Get-Content -Path $listPath -TotalCount 3 -ErrorAction SilentlyContinue
+			$hasCustom = $firstLines | Where-Object { $_ -match '^\s*#\s*CUSTOM(?:\s|$)' } | Select-Object -First 1
+			if (-not $hasCustom -and $false -notmatch '^\s*#\s*CUSTOM(?:\s|$)') {
 				# Mark as original default (can be safely deleted during migration)
 				Set-SandboxConfig -Section 'Lists' -Key "_OriginalDefault_$listName" -Value '1' -WorkingDir $WorkingDir
 				Write-Verbose "Tracked original default list: $listName"

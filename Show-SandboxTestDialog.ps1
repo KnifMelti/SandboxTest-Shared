@@ -3803,7 +3803,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$btnSaveScript.Enabled = $false
 		} elseif ($script:currentScriptFile) {
 			# Check if script has CUSTOM header
-			$hasCustomOverride = $txtScript.Text -match '^\s*#\s*CUSTOM(?:\s|$)'
+			$hasCustomOverride = $txtScript.Text -match '(?m)^\s*#\s*CUSTOM(?:\s|$)'
 			$isDefaultScript = $false
 			if (-not $hasCustomOverride) {
 				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
@@ -3815,7 +3815,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		$txtScript.Add_TextChanged({
 		# Check if current script has CUSTOM header
 		$currentContent = $txtScript.Text
-		$hasCustomOverride = $currentContent -match '^\s*#\s*CUSTOM(?:\s|$)'
+		$hasCustomOverride = $currentContent -match '(?m)^\s*#\s*CUSTOM(?:\s|$)'
 
 		# Check if file is a default script (but allow custom override to bypass this)
 		$isDefaultScript = $false
