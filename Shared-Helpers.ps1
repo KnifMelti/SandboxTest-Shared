@@ -1244,7 +1244,7 @@ function Sync-GitHubScriptsSelective {
 					# Check for custom override header before syncing (applies to ALL AlwaysSyncPatterns files)
 					if (Test-Path $localPath) {
 						$firstLine = Get-Content -Path $localPath -TotalCount 1 -ErrorAction SilentlyContinue
-						if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+						if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
 							Write-Verbose "Skipping sync for custom override: $($file.name)"
 							$skippedCount++
 							continue
@@ -1335,9 +1335,9 @@ function Sync-GitHubScriptsSelective {
 				$obsoletePath = Join-Path $LocalFolder $obsoleteFile
 				$listName = [System.IO.Path]::GetFileNameWithoutExtension($obsoleteFile)
 
-				# Check for CUSTOM OVERRIDE - preserve user modifications
+				# Check for CUSTOM - preserve user modifications
 				$firstLine = Get-Content -Path $obsoletePath -TotalCount 1 -ErrorAction SilentlyContinue
-				if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+				if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
 					Write-Verbose "Preserving custom override package list: $listName"
 					continue
 				}
@@ -1362,9 +1362,9 @@ function Sync-GitHubScriptsSelective {
 				continue  # Already deleted
 			}
 
-			# Check for CUSTOM OVERRIDE (final protection)
+			# Check for CUSTOM (final protection)
 			$firstLine = Get-Content -Path $originalPath -TotalCount 1 -ErrorAction SilentlyContinue
-			if ($firstLine -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+			if ($firstLine -match '^\s*#\s*CUSTOM(?:\s|$)') {
 				Write-Verbose "Preserving custom override list: $originalListName"
 				continue
 			}
@@ -1704,9 +1704,9 @@ function Initialize-PackageListMigration {
 	foreach ($listName in $originalDefaults) {
 		$listPath = Join-Path $wsbDir "$listName.txt"
 		if (Test-Path $listPath) {
-			# Check if it has CUSTOM OVERRIDE
+			# Check if it has CUSTOM
 			$firstLine = Get-Content -Path $listPath -TotalCount 1 -ErrorAction SilentlyContinue
-			if ($firstLine -notmatch '^\s*#\s*CUSTOM\s+OVERRIDE') {
+			if ($firstLine -notmatch '^\s*#\s*CUSTOM(?:\s|$)') {
 				# Mark as original default (can be safely deleted during migration)
 				Set-SandboxConfig -Section 'Lists' -Key "_OriginalDefault_$listName" -Value '1' -WorkingDir $WorkingDir
 				Write-Verbose "Tracked original default list: $listName"

@@ -683,13 +683,13 @@ function global:Update-FormFromSelection {
 
 	# Handle script selection
 	if ($isFile) {
-		# Check if custom Std-File.ps1 exists with CUSTOM OVERRIDE header
+		# Check if custom Std-File.ps1 exists with CUSTOM header
 		$stdFilePath = Join-Path $wsbDir "Std-File.ps1"
 		$useCustom = $false
 
 		if (Test-Path $stdFilePath) {
 			$stdFileContent = Get-Content $stdFilePath -Raw -ErrorAction SilentlyContinue
-			if ($stdFileContent -match '^\s*#\s*CUSTOM\s+OVERRIDE') {
+			if ($stdFileContent -match '^\s*#\s*CUSTOM(?:\s|$)') {
 				$useCustom = $true
 			}
 		}
@@ -775,8 +775,8 @@ function global:Update-FormFromSelection {
 			$script:originalScriptContent = $null
 
 			# Update Save button state
-			# Check if loaded script has CUSTOM OVERRIDE header
-			$hasCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+			# Check if loaded script has CUSTOM header
+			$hasCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM(?:\s|$)'
 			$isDefaultScript = $false
 			if (-not $hasCustomOverride) {
 				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
@@ -3707,9 +3707,9 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 
 				# Update Save button state for loaded file
 				# Enable Save button if:
-				# 1. File has CUSTOM OVERRIDE header (custom script - always editable)
+				# 1. File has CUSTOM header (custom script - always editable)
 				# 2. File is NOT a default script (Std-*.ps1 without custom header)
-				$isCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+				$isCustomOverride = $scriptContent -match '^\s*#\s*CUSTOM(?:\s|$)'
 				$isDefaultScript = Test-IsDefaultScript -FilePath $openFileDialog.FileName
 
 				if ($isCustomOverride -or -not $isDefaultScript) {
@@ -3802,8 +3802,8 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		if ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
 			$btnSaveScript.Enabled = $false
 		} elseif ($script:currentScriptFile) {
-			# Check if script has CUSTOM OVERRIDE header
-			$hasCustomOverride = $txtScript.Text -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+			# Check if script has CUSTOM header
+			$hasCustomOverride = $txtScript.Text -match '^\s*#\s*CUSTOM(?:\s|$)'
 			$isDefaultScript = $false
 			if (-not $hasCustomOverride) {
 				$isDefaultScript = Test-IsDefaultScript -FilePath $script:currentScriptFile
@@ -3813,9 +3813,9 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 
 		# Add TextChanged event to update Save button state dynamically
 		$txtScript.Add_TextChanged({
-		# Check if current script has CUSTOM OVERRIDE header
+		# Check if current script has CUSTOM header
 		$currentContent = $txtScript.Text
-		$hasCustomOverride = $currentContent -match '^\s*#\s*CUSTOM\s+OVERRIDE'
+		$hasCustomOverride = $currentContent -match '^\s*#\s*CUSTOM(?:\s|$)'
 
 		# Check if file is a default script (but allow custom override to bypass this)
 		$isDefaultScript = $false
@@ -3824,7 +3824,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		}
 
 		if ($isDefaultScript) {
-			# Default scripts without CUSTOM OVERRIDE cannot be saved
+			# Default scripts without CUSTOM cannot be saved
 			$btnSaveScript.Enabled = $false
 		} elseif ([string]::IsNullOrWhiteSpace($txtScript.Text)) {
 			# Empty script cannot be saved
