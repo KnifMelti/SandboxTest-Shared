@@ -2917,7 +2917,7 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 			$fileDialog.Title = "Select file to run in Windows Sandbox"
 
 			# Build dynamic filter from INI extensions
-			$baseExtensions = @("exe", "msi", "msix", "cmd", "bat", "ps1", "appx", "appxbundle", "intunewin")
+			$baseExtensions = @("exe", "msi", "msix", "cmd", "bat", "ps1", "appx", "appxbundle", "intunewin", "winget")
 			$defaultScriptExtensions = @("ahk", "au3", "py", "js")
 
 			# Load custom extensions from INI
