@@ -1572,6 +1572,9 @@ function global:Show-ThemeContextMenu {
 	.PARAMETER AppIcon
 	Optional icon for message dialogs
 
+	.PARAMETER Controls
+	Optional hashtable containing references to form controls for Save/Reset Settings functionality
+
 	.OUTPUTS
 	ContextMenuStrip object
 	#>
@@ -1591,7 +1594,9 @@ function global:Show-ThemeContextMenu {
 
 		[scriptblock]$UpdateContextMenu,
 
-		[System.Drawing.Icon]$AppIcon
+		[System.Drawing.Icon]$AppIcon,
+
+		[hashtable]$Controls
 	)
 
 	# Get current theme preference
@@ -1614,6 +1619,7 @@ function global:Show-ThemeContextMenu {
 	$menuTestContextMenu = $TestContextMenu
 	$menuUpdateContextMenu = $UpdateContextMenu
 	$menuAppIcon = $AppIcon
+	$menuControls = $Controls
 
 	# Add "Theme" header (disabled, acts as label)
 	$headerItem = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1635,7 +1641,7 @@ function global:Show-ThemeContextMenu {
 	$autoItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Auto"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -Controls $menuControls -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($autoItem) | Out-Null
 
@@ -1647,7 +1653,7 @@ function global:Show-ThemeContextMenu {
 	$lightItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Light"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -Controls $menuControls -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($lightItem) | Out-Null
 
@@ -1659,7 +1665,7 @@ function global:Show-ThemeContextMenu {
 	$darkItem.Add_Click({
 			Set-SandboxStartThemePreference -ThemeMode "Dark"
 			Set-ThemeToForm -Form $menuForm -UpdateButtonColor $menuColor
-			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
+			$menuForm.ContextMenuStrip = Show-ThemeContextMenu -Form $menuForm -UpdateButtonColor $menuColor -Controls $menuControls -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($darkItem) | Out-Null
 
@@ -1673,9 +1679,134 @@ function global:Show-ThemeContextMenu {
 	$customItem.BackColor = $menuBackColor
 	$customItem.ForeColor = $menuForeColor
 	$customItem.Add_Click({
-			Show-ColorPickerDialog -ParentForm $menuForm -UpdateButtonColor $menuColor -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
+			Show-ColorPickerDialog -ParentForm $menuForm -UpdateButtonColor $menuColor -Controls $menuControls -WorkingDir $menuWorkingDir -TestRegKey $menuTestRegKey -TestContextMenu $menuTestContextMenu -UpdateContextMenu $menuUpdateContextMenu -AppIcon $menuAppIcon
 		}.GetNewClosure())
 	$contextMenu.Items.Add($customItem) | Out-Null
+
+	# Add Settings Save/Reset options if Controls hashtable is provided
+	if ($Controls) {
+		# Add separator
+		$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
+		# Add Save Settings menu item
+		$saveSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
+		$saveSettingsItem.Text = "Save Settings"
+		$saveSettingsItem.BackColor = $menuBackColor
+		$saveSettingsItem.ForeColor = $menuForeColor
+		$saveSettingsItem.Add_Click({
+				try {
+					# Collect current settings from controls
+					$settings = @{
+						MapFolder              = $menuControls.txtMapFolder.Text
+						MapFolderReadOnly      = $menuControls.chkMapFolderReadOnly.Checked.ToString()
+						Networking             = $menuControls.chkNetworking.Checked.ToString()
+						SkipWinGetInstallation = $menuControls.chkSkipWinGet.Checked.ToString()
+						Prerelease             = $menuControls.chkPrerelease.Checked.ToString()
+						Clean                  = $menuControls.chkClean.Checked.ToString()
+						Verbose                = $menuControls.chkVerbose.Checked.ToString()
+						ProtectedClient        = $menuControls.chkProtectedClient.Checked.ToString()
+						MemoryInMB             = $menuControls.cmbMemory.SelectedItem.ToString()
+						vGPU                   = $menuControls.cmbvGPU.SelectedItem.ToString()
+					}
+
+					# Save to registry
+					Set-SandboxStartSettings -Settings $settings
+
+					# Show confirmation
+					Show-ThemedMessageDialog `
+						-Title "Settings Saved" `
+						-Message "Your settings have been saved and will be restored on next launch." `
+						-Buttons "OK" `
+						-Icon "Information" `
+						-ParentIcon $menuAppIcon
+				}
+				catch {
+					Show-ThemedMessageDialog `
+						-Title "Error" `
+						-Message "Failed to save settings: $($_.Exception.Message)" `
+						-Buttons "OK" `
+						-Icon "Error" `
+						-ParentIcon $menuAppIcon
+				}
+			}.GetNewClosure())
+		$contextMenu.Items.Add($saveSettingsItem) | Out-Null
+
+		# Add Reset to Defaults menu item
+		$resetSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
+		$resetSettingsItem.Text = "Reset to Defaults"
+		$resetSettingsItem.BackColor = $menuBackColor
+		$resetSettingsItem.ForeColor = $menuForeColor
+		$resetSettingsItem.Add_Click({
+				try {
+					# Show confirmation dialog
+					$result = Show-ThemedMessageDialog `
+						-Title "Reset Settings" `
+						-Message "Reset all settings to default values?`n`nThis will clear your saved preferences." `
+						-Buttons "OKCancel" `
+						-Icon "Question" `
+						-ParentIcon $menuAppIcon
+
+					if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+						# Apply default values to controls
+						$menuControls.txtMapFolder.Text = $menuControls.InitialMapFolder
+
+						# Update SandboxFolderName based on MapFolder
+						$mapPath = $menuControls.txtMapFolder.Text
+						$msiFiles = Get-ChildItem -Path $mapPath -Filter "WAU*.msi" -File -ErrorAction SilentlyContinue
+						if ($msiFiles) {
+							$menuControls.txtSandboxFolderName.Text = "WAU-install"
+						} else {
+							$folderName = Split-Path $mapPath -Leaf
+							# Check if it's a root drive (contains : or is a path like D:\)
+							if (![string]::IsNullOrWhiteSpace($folderName) -and $folderName -notmatch ':' -and $folderName -ne '\') {
+								$menuControls.txtSandboxFolderName.Text = $folderName
+							} else {
+								# Root drive - extract drive letter
+								$driveLetter = $mapPath.TrimEnd('\').Replace(':', '')
+								if (![string]::IsNullOrWhiteSpace($driveLetter)) {
+									$menuControls.txtSandboxFolderName.Text = "Drive_$driveLetter"
+								} else {
+									$menuControls.txtSandboxFolderName.Text = "MappedFolder"
+								}
+							}
+						}
+
+						$menuControls.chkMapFolderReadOnly.Checked = $true
+						$menuControls.chkNetworking.Checked = $true
+						$menuControls.chkSkipWinGet.Checked = $false
+						$menuControls.chkPrerelease.Checked = $false
+						$menuControls.chkClean.Checked = $false
+						$menuControls.chkVerbose.Checked = $false
+						$menuControls.chkProtectedClient.Checked = $false
+						$menuControls.cmbMemory.SelectedItem = "4096"
+						$menuControls.cmbvGPU.SelectedItem = "Default"
+
+						# Delete registry key to clear saved settings
+						$regPath = "HKCU:\Software\SandboxStart\Settings"
+						if (Test-Path $regPath) {
+							Remove-Item -Path $regPath -Recurse -Force
+						}
+
+						# Show confirmation
+						Show-ThemedMessageDialog `
+							-Title "Settings Reset" `
+							-Message "Settings have been reset to defaults." `
+							-Buttons "OK" `
+							-Icon "Information" `
+							-ParentIcon $menuAppIcon
+					}
+				}
+				catch {
+					Show-ThemedMessageDialog `
+						-Title "Error" `
+						-Message "Failed to reset settings: $($_.Exception.Message)" `
+						-Buttons "OK" `
+						-Icon "Error" `
+						-ParentIcon $menuAppIcon
+				}
+			}.GetNewClosure())
+		$contextMenu.Items.Add($resetSettingsItem) | Out-Null
+	}
 
 	# Add Context Menu Integration if WorkingDir is provided and SandboxStart.ps1 exists
 	if ($WorkingDir -and $TestContextMenu -and $UpdateContextMenu) {
@@ -1776,6 +1907,9 @@ function global:Show-ColorPickerDialog {
 
 	.PARAMETER AppIcon
 	Optional icon for message dialogs
+
+	.PARAMETER Controls
+	Optional hashtable containing references to form controls for Save/Reset Settings functionality
 	#>
 
 	param(
@@ -1793,7 +1927,9 @@ function global:Show-ColorPickerDialog {
 
 		[scriptblock]$UpdateContextMenu,
 
-		[System.Drawing.Icon]$AppIcon
+		[System.Drawing.Icon]$AppIcon,
+
+		[hashtable]$Controls
 	)
 
 	# Save original theme state (for Cancel button to restore)
@@ -1806,6 +1942,7 @@ function global:Show-ColorPickerDialog {
 	$localTestContextMenu = $TestContextMenu
 	$localUpdateContextMenu = $UpdateContextMenu
 	$localAppIcon = $AppIcon
+	$localControls = $Controls
 
 	# Load current custom colors
 	$currentColors = Get-SandboxStartCustomColors
@@ -2547,7 +2684,7 @@ function global:Show-ColorPickerDialog {
 		Set-DarkTitleBar -Form $ParentForm -UseDarkMode $isDark
 
 		# Refresh context menu to show Custom checkmark
-		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -Controls $localControls -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
 	}.GetNewClosure())
 	$dialog.Controls.Add($okButton)
 
@@ -2574,7 +2711,7 @@ function global:Show-ColorPickerDialog {
 		}
 
 		# Restore context menu
-		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
+		$ParentForm.ContextMenuStrip = Show-ThemeContextMenu -Form $ParentForm -UpdateButtonColor $UpdateButtonColor -Controls $localControls -WorkingDir $localWorkingDir -TestRegKey $localTestRegKey -TestContextMenu $localTestContextMenu -UpdateContextMenu $localUpdateContextMenu -AppIcon $localAppIcon
 	}.GetNewClosure())
 	$dialog.Controls.Add($cancelButton)
 
@@ -2853,6 +2990,8 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 		} else {
 			$txtMapFolder.Text = $Script:WorkingDir
 		}
+		# Save initial MapFolder value for Reset to Defaults functionality
+		$script:InitialMapFolder = $txtMapFolder.Text
 		$form.Controls.Add($txtMapFolder)
 		$txtMapFolder.Enabled = $false  # Disable direct editing - users must use browse buttons
 
@@ -4063,6 +4202,45 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		# Apply theme based on saved preference (BEFORE context menu to ensure colors are set)
 		Set-ThemeToForm -Form $form -UpdateButtonColor $updateButtonGreen
 
+		# Load saved settings from registry (if available)
+		try {
+			$savedSettings = Get-SandboxStartSettings
+			if ($null -ne $savedSettings) {
+				# Apply saved settings to controls
+				$txtMapFolder.Text = $savedSettings.MapFolder
+				$chkMapFolderReadOnly.Checked = [bool]::Parse($savedSettings.MapFolderReadOnly)
+				$chkNetworking.Checked = [bool]::Parse($savedSettings.Networking)
+				$chkSkipWinGet.Checked = [bool]::Parse($savedSettings.SkipWinGetInstallation)
+				$chkPrerelease.Checked = [bool]::Parse($savedSettings.Prerelease)
+				$chkClean.Checked = [bool]::Parse($savedSettings.Clean)
+				$chkVerbose.Checked = [bool]::Parse($savedSettings.Verbose)
+				$chkProtectedClient.Checked = [bool]::Parse($savedSettings.ProtectedClient)
+
+				# Apply memory setting
+				# Note: Memory dropdown uses lazy loading, so we need to add the saved value if not present
+				$memoryValue = [int]$savedSettings.MemoryInMB
+				if ($cmbMemory.Items -contains $memoryValue) {
+					$cmbMemory.SelectedItem = $memoryValue
+				}
+				else {
+					# Add saved value to dropdown and select it (will be validated/replaced on first dropdown click)
+					[void]$cmbMemory.Items.Add($memoryValue.ToString())
+					$cmbMemory.SelectedItem = $memoryValue.ToString()
+				}
+
+				# Apply vGPU setting if valid
+				if ($cmbvGPU.Items -contains $savedSettings.vGPU) {
+					$cmbvGPU.SelectedItem = $savedSettings.vGPU
+				}
+
+				Write-Verbose "Settings loaded from registry"
+			}
+		}
+		catch {
+			Write-Verbose "Failed to load settings from registry: $($_.Exception.Message)"
+			# Silently continue with defaults if loading fails
+		}
+
 		# Prepare shell integration scriptblocks (only for SandboxStart, not WAU-Settings-GUI)
 		$sandboxStartScript = Join-Path $Script:WorkingDir 'SandboxStart.ps1'
 		$shellIntegrationParams = @{}
@@ -4202,7 +4380,22 @@ Update-FormFromSelection -SelectedPath $selectedDir -txtMapFolder $txtMapFolder 
 		}
 
 		# Attach right-click context menu for theme selection (AFTER theme is applied)
-		$contextMenu = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen @shellIntegrationParams
+		# Create hashtable with control references for Save/Reset Settings functionality
+		$controlsHash = @{
+			txtMapFolder          = $txtMapFolder
+			txtSandboxFolderName  = $txtSandboxFolderName
+			chkMapFolderReadOnly  = $chkMapFolderReadOnly
+			chkNetworking         = $chkNetworking
+			chkSkipWinGet         = $chkSkipWinGet
+			chkPrerelease         = $chkPrerelease
+			chkClean              = $chkClean
+			chkVerbose            = $chkVerbose
+			chkProtectedClient    = $chkProtectedClient
+			cmbMemory             = $cmbMemory
+			cmbvGPU               = $cmbvGPU
+			InitialMapFolder      = $script:InitialMapFolder
+		}
+		$contextMenu = Show-ThemeContextMenu -Form $form -UpdateButtonColor $updateButtonGreen -Controls $controlsHash @shellIntegrationParams
 		$form.ContextMenuStrip = $contextMenu
 
 		# Show dialog (modal)

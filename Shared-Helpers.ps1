@@ -894,6 +894,118 @@ function global:Set-SandboxStartCustomColors {
 	}
 }
 
+function global:Get-SandboxStartSettings {
+	<#
+	.SYNOPSIS
+	Reads SandboxStart GUI settings from registry
+
+	.DESCRIPTION
+	Retrieves the user's saved GUI configuration from registry.
+	Returns $null if no saved settings exist (first run).
+
+	.OUTPUTS
+	Hashtable with all saved settings, or $null if not found
+
+	.EXAMPLE
+	$settings = Get-SandboxStartSettings
+	if ($null -ne $settings) {
+		Write-Host "Memory: $($settings.MemoryInMB) MB"
+	}
+	#>
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart\Settings"
+
+		# Return null if registry key doesn't exist (first run)
+		if (-not (Test-Path $regPath)) {
+			return $null
+		}
+
+		# Default values (matching GUI defaults)
+		$defaults = @{
+			MapFolder               = ""
+			MapFolderReadOnly       = "True"
+			Networking              = "True"
+			SkipWinGetInstallation  = "False"
+			Prerelease              = "False"
+			Clean                   = "False"
+			Verbose                 = "False"
+			ProtectedClient         = "False"
+			MemoryInMB              = "4096"
+			vGPU                    = "Default"
+		}
+
+		# Read all values from registry
+		$settings = @{}
+		foreach ($key in $defaults.Keys) {
+			$value = (Get-ItemProperty -Path $regPath -Name $key -ErrorAction SilentlyContinue).$key
+			if ($null -eq $value) {
+				# Use default if value doesn't exist
+				$settings[$key] = $defaults[$key]
+			}
+			else {
+				$settings[$key] = $value
+			}
+		}
+
+		return $settings
+	}
+	catch {
+		Write-Verbose "Failed to read settings from registry: $($_.Exception.Message)"
+		return $null
+	}
+}
+
+function global:Set-SandboxStartSettings {
+	<#
+	.SYNOPSIS
+	Saves SandboxStart GUI settings to registry
+
+	.DESCRIPTION
+	Stores the user's GUI configuration in registry for persistence across sessions.
+
+	.PARAMETER Settings
+	Hashtable containing all settings to save
+
+	.EXAMPLE
+	$settings = @{
+		MapFolder = "C:\Test"
+		MapFolderReadOnly = "True"
+		Networking = "True"
+		SkipWinGetInstallation = "False"
+		Prerelease = "False"
+		Clean = "False"
+		Verbose = "False"
+		ProtectedClient = "False"
+		MemoryInMB = "4096"
+		vGPU = "Default"
+	}
+	Set-SandboxStartSettings -Settings $settings
+	#>
+
+	param(
+		[Parameter(Mandatory = $true)]
+		[hashtable]$Settings
+	)
+
+	try {
+		$regPath = "HKCU:\Software\SandboxStart\Settings"
+
+		# Create registry key if it doesn't exist
+		if (-not (Test-Path $regPath)) {
+			New-Item -Path $regPath -Force | Out-Null
+		}
+
+		# Save each setting as String type
+		foreach ($key in $Settings.Keys) {
+			Set-ItemProperty -Path $regPath -Name $key -Value $Settings[$key] -Type String
+		}
+	}
+	catch {
+		Write-Warning "Failed to save settings: $($_.Exception.Message)"
+	}
+}
+
 function global:Export-SandboxStartTheme {
 	<#
 	.SYNOPSIS
