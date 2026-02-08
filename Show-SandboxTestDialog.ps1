@@ -1879,6 +1879,30 @@ function global:Show-ThemeContextMenu {
 		}
 	}
 
+	# Separator before Open Working Directory
+	$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
+
+	# Open Working Directory menu item
+	$openFolderItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$openFolderItem.Text = "Open Working Directory"
+	$openFolderItem.BackColor = $menuBackColor
+	$openFolderItem.ForeColor = $menuForeColor
+	$openFolderItem.Add_Click({
+		try {
+			$workingDir = Get-Location
+			Start-Process explorer.exe -ArgumentList $workingDir
+		}
+		catch {
+			[System.Windows.Forms.MessageBox]::Show(
+				"Could not open folder: $($_.Exception.Message)",
+				"Error",
+				[System.Windows.Forms.MessageBoxButtons]::OK,
+				[System.Windows.Forms.MessageBoxIcon]::Error
+			)
+		}
+	}.GetNewClosure())
+	$contextMenu.Items.Add($openFolderItem) | Out-Null
+
 	return $contextMenu
 }
 
