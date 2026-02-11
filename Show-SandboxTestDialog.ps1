@@ -1889,7 +1889,7 @@ function global:Show-ThemeContextMenu {
 	$openSettingsItem.ForeColor = $menuForeColor
 	$openSettingsItem.Add_Click({
 		try {
-			$wsbDir = Join-Path (Get-Location) "wsb"
+			$wsbDir = Join-Path $menuWorkingDir "wsb"
 			if (Test-Path $wsbDir) {
 				Start-Process explorer.exe -ArgumentList $wsbDir
 			}
