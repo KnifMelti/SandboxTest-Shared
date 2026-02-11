@@ -1879,29 +1879,39 @@ function global:Show-ThemeContextMenu {
 		}
 	}
 
-	# Separator before Open Working Directory
+	# Separator before Open Settings Directory
 	$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
-	# Open Working Directory menu item
-	$openFolderItem = New-Object System.Windows.Forms.ToolStripMenuItem
-	$openFolderItem.Text = "Open Working Directory"
-	$openFolderItem.BackColor = $menuBackColor
-	$openFolderItem.ForeColor = $menuForeColor
-	$openFolderItem.Add_Click({
+	# Open Settings Directory menu item
+	$openSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
+	$openSettingsItem.Text = "Open Settings Directory"
+	$openSettingsItem.BackColor = $menuBackColor
+	$openSettingsItem.ForeColor = $menuForeColor
+	$openSettingsItem.Add_Click({
 		try {
-			$workingDir = Get-Location
-			Start-Process explorer.exe -ArgumentList $workingDir
+			$wsbDir = Join-Path (Get-Location) "wsb"
+			if (Test-Path $wsbDir) {
+				Start-Process explorer.exe -ArgumentList $wsbDir
+			}
+			else {
+				[System.Windows.Forms.MessageBox]::Show(
+					"Settings directory not found: $wsbDir",
+					"Error",
+					[System.Windows.Forms.MessageBoxButtons]::OK,
+					[System.Windows.Forms.MessageBoxIcon]::Error
+				)
+			}
 		}
 		catch {
 			[System.Windows.Forms.MessageBox]::Show(
-				"Could not open folder: $($_.Exception.Message)",
+				"Could not open settings directory: $($_.Exception.Message)",
 				"Error",
 				[System.Windows.Forms.MessageBoxButtons]::OK,
 				[System.Windows.Forms.MessageBoxIcon]::Error
 			)
 		}
 	}.GetNewClosure())
-	$contextMenu.Items.Add($openFolderItem) | Out-Null
+	$contextMenu.Items.Add($openSettingsItem) | Out-Null
 
 	return $contextMenu
 }
