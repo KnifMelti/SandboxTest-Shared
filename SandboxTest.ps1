@@ -799,8 +799,8 @@ if ($installLocation) {
 	Add-Shortcut "$installLocation" "${env:Public}\Desktop\WAU InstallDir.lnk" "" "" "WAU InstallDir"
 
 	# Configure Regedit settings
-	reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit" /v LastKey /t REG_SZ /d Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Romanitho\Winget-AutoUpdate /f | Out-Null
-	reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v WAU /t REG_SZ /d Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Romanitho\Winget-AutoUpdate /f | Out-Null
+	Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit" -Name "LastKey" -Value "HKEY_LOCAL_MACHINE\SOFTWARE\Romanitho\Winget-AutoUpdate" -Force
+	Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" -Name "WAU" -Value "HKEY_LOCAL_MACHINE\SOFTWARE\Romanitho\Winget-AutoUpdate" -Force
 
 	# Create AdvancedRun configuration folder and config file
 	$advancedRunFolder = "${env:TEMP}\AdvancedRun"

@@ -1906,7 +1906,7 @@ function global:Show-ThemeContextMenu {
 			# Open Registry Editor to SandboxStart settings
 			$regPath = "HKEY_CURRENT_USER\Software\SandboxStart\Settings"
 			# Set LastKey in regedit to navigate to SandboxStart settings
-			reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit" /v "LastKey" /t REG_SZ /d "Computer\$regPath" /f | Out-Null
+			Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit" -Name "LastKey" -Value $regPath -Force
 			Start-Process regedit.exe
 		}
 		catch {
