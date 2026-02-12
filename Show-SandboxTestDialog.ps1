@@ -1882,13 +1882,14 @@ function global:Show-ThemeContextMenu {
 	# Separator before Open Settings Directory
 	$contextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 
-	# Open Settings Directory menu item
+	# Open Settings Dir/Reg menu item
 	$openSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem
-	$openSettingsItem.Text = "Open Settings Directory"
+	$openSettingsItem.Text = "Open Settings Dir/Reg"
 	$openSettingsItem.BackColor = $menuBackColor
 	$openSettingsItem.ForeColor = $menuForeColor
 	$openSettingsItem.Add_Click({
 		try {
+			# Open wsb directory in Explorer
 			$wsbDir = Join-Path $menuWorkingDir "wsb"
 			if (Test-Path $wsbDir) {
 				Start-Process explorer.exe -ArgumentList $wsbDir
@@ -1896,15 +1897,21 @@ function global:Show-ThemeContextMenu {
 			else {
 				[System.Windows.Forms.MessageBox]::Show(
 					"Settings directory not found: $wsbDir",
-					"Error",
+					"Warning",
 					[System.Windows.Forms.MessageBoxButtons]::OK,
-					[System.Windows.Forms.MessageBoxIcon]::Error
+					[System.Windows.Forms.MessageBoxIcon]::Warning
 				)
 			}
+
+			# Open Registry Editor to SandboxStart settings
+			$regPath = "HKEY_CURRENT_USER\Software\SandboxStart\Settings"
+			# Set LastKey in regedit to navigate to SandboxStart settings
+			reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit" /v "LastKey" /t REG_SZ /d "Computer\$regPath" /f | Out-Null
+			Start-Process regedit.exe
 		}
 		catch {
 			[System.Windows.Forms.MessageBox]::Show(
-				"Could not open settings directory: $($_.Exception.Message)",
+				"Could not open settings: $($_.Exception.Message)",
 				"Error",
 				[System.Windows.Forms.MessageBoxButtons]::OK,
 				[System.Windows.Forms.MessageBoxIcon]::Error
