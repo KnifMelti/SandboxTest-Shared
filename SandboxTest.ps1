@@ -647,6 +647,31 @@ Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" 
 Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "${env:Public}\Desktop\CMTrace.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"if(!(Test-Path '${env:TEMP}\CMTrace.exe')){Invoke-WebRequest -Uri 'https://github.com/KnifMelti/SandboxStart/raw/master/Source/assets/CMTrace.exe' -OutFile '${env:TEMP}\CMTrace.exe' -UseBasicParsing};ie4uinit.exe -Show|Out-Null;Start-Process '${env:TEMP}\CMTrace.exe' -ErrorAction SilentlyContinue`"" "${env:TEMP}\CMTrace.exe,0" "Download and run CMTrace - View log files in ConfigMgr format" "Minimized"
 Add-Shortcut "${env:windir}\regedit.exe" "${env:Public}\Desktop\Registry Editor.lnk" "" "" "Open Registry Editor" "Normal"
 
+# Create Install WinGet shortcut (only in Network-Only mode)
+if ("PLACEHOLDER_SKIP_WINGET" -eq "True") {
+	$installWinGetScript = "${env:TEMP}\Install-WinGet.ps1"
+	@"
+`$ProgressPreference = 'silentlyContinue'
+`$success = `$false
+try {
+	Write-Host 'Installing WinGet PowerShell module from PSGallery...' -ForegroundColor Cyan
+	Install-PackageProvider -Name NuGet -Force | Out-Null
+	Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+	Write-Host 'Using Repair-WinGetPackageManager cmdlet to bootstrap WinGet...' -ForegroundColor Cyan
+	Repair-WinGetPackageManager -AllUsers -Latest
+	Write-Host 'Done.' -ForegroundColor Green
+	`$success = `$true
+} catch {
+	Write-Host "Error: `$(`$_.Exception.Message)" -ForegroundColor Red
+}
+if (`$success) {
+	Remove-Item -Path "`$env:PUBLIC\Desktop\Install WinGet.lnk" -Force -ErrorAction SilentlyContinue
+}
+Read-Host 'Press Enter to close...'
+"@ | Out-File -FilePath $installWinGetScript -Encoding UTF8 -Force
+	Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "${env:Public}\Desktop\Install WinGet.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"Start-Process powershell.exe -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -NoExit -File $installWinGetScript'`"" "${env:SystemRoot}\System32\SHELL32.dll,43" "Install WinGet from PSGallery" "Normal"
+}
+
 # Configure Regedit settings (Favorites)
 reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall Machine" /t REG_SZ /d Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
 reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall User" /t REG_SZ /d Computer\HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
