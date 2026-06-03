@@ -2880,31 +2880,36 @@ AAABAAMAMDAAAAEAIACoJQAANgAAACAgAAABACAAqBAAAN4lAAAQEAAAAQAgAGgEAACGNgAAKAAAADAA
 				-Repo "SandboxStart" `
 				-UseCache
 
-			# Get local SandboxStart.ps1 file timestamp
+			# Get local SandboxStart.ps1 version
 			$localScriptPath = Join-Path $Script:WorkingDir "SandboxStart.ps1"
 
 			# Only check if the file exists
 			if (Test-Path $localScriptPath) {
-				# Get local file time in UTC for accurate comparison
-				$localFileTime = (Get-Item $localScriptPath).LastWriteTimeUtc
+				# Read version from # Version: comment (only first 25 lines for efficiency)
+				$localVersion = $null
+				$scriptHeader = Get-Content $localScriptPath -TotalCount 25
+				foreach ($line in $scriptHeader) {
+					if ($line -match '^\s*#\s*Version:\s*v?(\S+)') {
+						$localVersion = $matches[1]
+						break
+					}
+				}
 
-				# Find the ZIP asset and use its created_at timestamp
-				$zipAsset = $latestRelease.assets | Where-Object { $_.name -like "SandboxStart-*.zip" } | Select-Object -First 1
-				if ($zipAsset) {
-					# Parse ZIP asset created_at timestamp and convert to UTC (API returns UTC but Parse converts to local)
-					$releaseDate = ([DateTime]::Parse($zipAsset.created_at)).ToUniversalTime()
+				# Atom-feed fallback returns an array; API returns a single object.
+				# When $latestRelease is an array, skip gracefully (same as current behavior).
+				$releaseTagName = if ($latestRelease -isnot [array]) { $latestRelease.tag_name } else { $null }
 
-					# Compare dates with 90 minute tolerance (build/upload time difference and timezone conversion)
-					# If release is more than 90 minutes newer than local file, show update button
-					$timeDifference = ($releaseDate - $localFileTime).TotalMinutes
-					if ($timeDifference -gt 90) {
+				if ($localVersion -and $releaseTagName) {
+					$remoteVersion = $releaseTagName.TrimStart('v')
+					$localVer = $localVersion -as [Version]
+					$remoteVer = $remoteVersion -as [Version]
+					if ($localVer -and $remoteVer -and ($remoteVer -gt $localVer)) {
 						$localFileOlderThanRelease = $true
 						Write-Host "Update available" -ForegroundColor Yellow
 					} else {
 						Write-Host "Done" -ForegroundColor Green
 					}
 				} else {
-					# No ZIP asset found
 					Write-Host "Skipped" -ForegroundColor Gray
 				}
 			} else {
