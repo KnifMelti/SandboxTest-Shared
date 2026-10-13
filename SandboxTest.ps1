@@ -369,6 +369,48 @@
 		}
 	}
 
+	function Stop-SandboxSession {
+		<#
+		.SYNOPSIS
+		Stops running Windows Sandbox sessions using the wsb CLI (Windows 11 24H2 and later)
+		.PARAMETER TimeoutMilliseconds
+		Timeout in milliseconds
+		.OUTPUTS
+		Boolean. True if no sessions remain; False if wsb is unavailable, failed or timed out
+		#>
+		param (
+			[int] $TimeoutMilliseconds = 30000
+		)
+		$wsbCommand = Get-Command 'wsb' -ErrorAction SilentlyContinue
+		if (!$wsbCommand) { return $false }
+
+		try {
+			$getSessionIds = {
+				$json = & $wsbCommand.Source list --raw
+				if ($LASTEXITCODE -ne 0) { throw "wsb list failed with exit code $LASTEXITCODE" }
+				@(($json | ConvertFrom-Json).WindowsSandboxEnvironments.Id | Where-Object { $_ })
+			}
+
+			foreach ($id in (& $getSessionIds)) {
+				Write-Information "--> Stopping Windows Sandbox session $id"
+				& $wsbCommand.Source stop --id $id | Out-Null
+			}
+
+			$elapsedTime = 0
+			while ($elapsedTime -lt $TimeoutMilliseconds) {
+				if (!(& $getSessionIds)) { return $true }
+				Start-Sleep -Milliseconds 500
+				$elapsedTime += 500
+			}
+			Write-Verbose 'Windows Sandbox session still listed after timeout; falling back to stopping processes'
+			return $false
+		}
+		catch {
+			Write-Verbose "wsb CLI failed ($($_.Exception.Message)); falling back to stopping processes"
+			return $false
+		}
+	}
+
 	# Main Function Logic
 	try {
 		# Check if Windows Sandbox is enabled
@@ -512,12 +554,15 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 			$script:AppInstallerDependencies = @()
 		}
 
-		Stop-NamedProcess -ProcessName 'WindowsSandboxClient'
-		Stop-NamedProcess -ProcessName 'WindowsSandboxRemoteSession'
-		Stop-NamedProcess -ProcessName 'WindowsSandbox'
-		Start-Sleep -Milliseconds 5000
+		if (!(Stop-SandboxSession)) {
+			Stop-NamedProcess -ProcessName 'WindowsSandboxClient'
+			Stop-NamedProcess -ProcessName 'WindowsSandboxRemoteSession'
+			Stop-NamedProcess -ProcessName 'WindowsSandboxServer'
+			Stop-NamedProcess -ProcessName 'WindowsSandbox'
+		}
+		# Start-Sleep -Milliseconds 5000
 
-		Write-Verbose 'Cleaning up previous test data'
+		# Write-Verbose 'Cleaning up previous test data'
 		# Invoke-FileCleanup -FilePaths $script:TestDataFolder  # Temporarily disabled due to file locking
 
 		# Wait longer for processes to fully terminate and release file handles
@@ -660,6 +705,7 @@ try {
 	Write-Host 'Using Repair-WinGetPackageManager cmdlet to bootstrap WinGet...' -ForegroundColor Cyan
 	Repair-WinGetPackageManager -AllUsers -Latest
 	Write-Host 'Done.' -ForegroundColor Green
+	winget
 	`$success = `$true
 } catch {
 	Write-Host "Error: `$(`$_.Exception.Message)" -ForegroundColor Red
@@ -667,7 +713,6 @@ try {
 if (`$success) {
 	Remove-Item -Path "`$env:PUBLIC\Desktop\Install WinGet.lnk" -Force -ErrorAction SilentlyContinue
 }
-Read-Host 'Press Enter to close...'
 "@ | Out-File -FilePath $installWinGetScript -Encoding UTF8 -Force
 	Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "${env:Public}\Desktop\Install WinGet.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"Start-Process powershell.exe -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -NoExit -File $installWinGetScript'`"" "${env:SystemRoot}\System32\SHELL32.dll,43" "Install WinGet from PSGallery" "Normal"
 }
@@ -690,6 +735,14 @@ Get-Process explorer -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorA
 Start-Sleep -Milliseconds 500
 ie4uinit.exe -Show | Out-Null
 
+# Create AdvancedRun configuration folder and config file
+$advancedRunFolder = "${env:TEMP}\AdvancedRun"
+if (!(Test-Path $advancedRunFolder)) {
+	New-Item -Path $advancedRunFolder -ItemType Directory -Force | Out-Null
+}
+# Create AdvancedRun.cfg
+$advancedRunConfig = "[General]`r`nCommandLine=`r`nStartDirectory=`r`nRunAs=4`r`nEnvironmentVariablesMode=1`r`nUseSearchPath=1`r`nRunMode=1`r`nCommandWindowMode=1"
+$advancedRunConfig | Out-File -FilePath (Join-Path $advancedRunFolder "AdvancedRun.cfg") -Encoding ASCII -Force
 # Create UninstallView configuration folder
 $uninstallViewFolder = "${env:TEMP}\UninstallView"
 if (!(Test-Path $uninstallViewFolder)) {
@@ -877,6 +930,19 @@ if ($installLocation) {
 			Copy-Item -Path $stdFilePath -Destination (Join-Path $script:TestDataFolder "Std-File.ps1") -ErrorAction SilentlyContinue
 		}
 
+		# Use the host's DNS servers (from the interface with the default route) inside the sandbox
+		$hostDnsServers = @()
+		try {
+			$defaultRoute = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop | Sort-Object RouteMetric | Select-Object -First 1
+			$hostDnsServers = @((Get-DnsClientServerAddress -InterfaceIndex $defaultRoute.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop).ServerAddresses)
+		} catch {
+			Write-Verbose "Could not detect host DNS servers: $($_.Exception.Message)"
+		}
+		$sandboxDnsLine = if (($Networking -eq 'Enable') -and $hostDnsServers.Count -gt 0) {
+			"Set-DnsClientServerAddress -InterfaceAlias 'Ethernet' -ServerAddresses " + (($hostDnsServers | ForEach-Object { "'$_'" }) -join ',') + ' -ErrorAction SilentlyContinue'
+		} else {
+			'# No host DNS servers detected'
+		}
 		Write-Verbose 'Creating the script for bootstrapping the sandbox'
 		@"
 function Update-EnvironmentVariables {
@@ -891,6 +957,8 @@ function Update-EnvironmentVariables {
 }
 
 Push-Location $($script:SandboxTestDataFolder)
+
+$sandboxDnsLine
 
 # WinGet Installation (conditional on networking)
 if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
