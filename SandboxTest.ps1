@@ -638,6 +638,8 @@ function Add-Shortcut ($Target, $Shortcut, $Arguments, $Icon, $Description, $Win
 	$Shortcut.Save()
 }
 
+Remove-Item -Path (Join-Path $env:USERPROFILE 'Desktop\Microsoft Edge.lnk') -Force -ErrorAction SilentlyContinue
+
 # Create NirSoft shortcut folder on desktop with custom icon
 $nirSoftFolder = "${env:Public}\Desktop\NirSoft Utilities"
 if (!(Test-Path $nirSoftFolder)) {
@@ -718,8 +720,8 @@ if (`$success) {
 }
 
 # Configure Regedit settings (Favorites)
-reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall Machine" /t REG_SZ /d Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
-reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall User" /t REG_SZ /d Computer\HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
+reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall Machine" /t REG_SZ /d HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
+reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites" /v "Uninstall User" /t REG_SZ /d HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall /f | Out-Null
 
 # Configure Explorer settings
 reg.exe add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v HideFileExt /t REG_DWORD /d 0 /f | Out-Null
@@ -959,6 +961,13 @@ function Update-EnvironmentVariables {
 Push-Location $($script:SandboxTestDataFolder)
 
 $sandboxDnsLine
+
+# Disable Smart App Control evaluation mode and refresh the policy
+Write-Host '================================================' -ForegroundColor Cyan
+Write-Host '--> Disabling Smart App Control' -ForegroundColor Yellow
+Write-Host '================================================' -ForegroundColor Cyan
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name VerifiedAndReputablePolicyState -Value 0 -Type DWord | Out-Null
+"" | CiTool.exe --refresh | Out-Null 2>`$null
 
 # WinGet Installation (conditional on networking)
 if (("$Networking" -eq "Enable") -and -not [System.Convert]::ToBoolean("$SkipWinGetInstallation")) {
