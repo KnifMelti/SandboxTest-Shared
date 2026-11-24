@@ -571,6 +571,9 @@ $ Enable-WindowsOptionalFeature -Online -FeatureName 'Containers-DisposableClien
 		if (!(Initialize-Folder $script:TestDataFolder)) { throw 'Could not create folder for mapping files into the sandbox' }
 		if (!(Initialize-Folder $script:DependenciesCacheFolder)) { throw 'Could not create folder for caching dependencies' }
 
+		# Copy host Notepad into the mapped folder so the sandbox can place it on the desktop
+		Copy-Item -Path "$env:SystemRoot\System32\notepad.exe" -Destination (Join-Path $script:TestDataFolder 'notepad.exe') -Force -ErrorAction SilentlyContinue
+
 		# Copy WinGet assets only if networking is enabled
 		if (($Networking -eq "Enable") -and -not $SkipWinGetInstallation) {
 			Write-Verbose "Copying assets into $script:TestDataFolder"
@@ -685,6 +688,24 @@ $SEND_CHANGE = 0x02
 # Enable Clipboard History
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Clipboard" -Name "EnableClipboardHistory" -Value 1 -Type DWord -Force
 
+# Copy Notepad from host (via mapped folder) to System32 and register it for .txt, .ini, .json and .log
+$hostNotepad = Join-Path 'PLACEHOLDER_TESTDATA_FOLDER' 'notepad.exe'
+if (Test-Path $hostNotepad) {
+	$notepadDest = "${env:SystemRoot}\System32\notepad.exe"
+	try {
+		Copy-Item -Path $hostNotepad -Destination $notepadDest -Force -ErrorAction Stop
+	} catch {
+		Write-Warning "Could not copy notepad.exe to System32: $($_.Exception.Message)"
+	}
+	foreach ($assoc in @(@{Ext='.txt'; Class='txtfile'}, @{Ext='.ini'; Class='inifile'}, @{Ext='.json'; Class='jsonfile'}, @{Ext='.log'; Class='logfile'})) {
+		$classPath = "HKCU:\Software\Classes\$($assoc.Class)"
+		New-Item -Path "$classPath\shell\open\command" -Force | Out-Null
+		Set-ItemProperty -Path "$classPath\shell\open\command" -Name '(default)' -Value "`"$notepadDest`" `"%1`""
+		New-Item -Path "HKCU:\Software\Classes\$($assoc.Ext)" -Force | Out-Null
+		Set-ItemProperty -Path "HKCU:\Software\Classes\$($assoc.Ext)" -Name '(default)' -Value $assoc.Class
+	}
+}
+
 # Create non-WAU shortcuts
 Add-Shortcut "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" "${env:Public}\Desktop\Sysinternals Live.lnk" "https://live.sysinternals.com/" "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe,5" "Download and run from Sysinternals Live" "Normal"
 Add-Shortcut "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" "$nirSoftFolder\NirSoft.lnk" "https://www.nirsoft.net/" "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe,5" "Download from NirSoft Utilities" "Normal"
@@ -692,6 +713,7 @@ Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" 
 Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "$nirSoftFolder\UninstallView.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"if(!(Test-Path '${env:TEMP}\UninstallView\UninstallView.exe')){(New-Object Net.WebClient).DownloadFile('https://www.nirsoft.net/utils/uninstallview-x64.zip','${env:TEMP}\uninstallview-x64.zip');Add-Type -AssemblyName System.IO.Compression.FileSystem;[IO.Compression.ZipFile]::ExtractToDirectory('${env:TEMP}\uninstallview-x64.zip','${env:TEMP}\UninstallView')};[System.Windows.Forms.SendKeys]::SendWait('{F5}');Start-Process '${env:TEMP}\UninstallView\UninstallView.exe' -Verb RunAs`"" "${env:TEMP}\UninstallView\UninstallView.exe,0" "Download and run UninstallView - List all installed apps" "Minimized"
 Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "$nirSoftFolder\AdvancedRun.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"if(!(Test-Path '${env:TEMP}\AdvancedRun\AdvancedRun.exe')){(New-Object Net.WebClient).DownloadFile('https://www.nirsoft.net/utils/advancedrun-x64.zip','${env:TEMP}\advancedrun-x64.zip');Add-Type -AssemblyName System.IO.Compression.FileSystem;[IO.Compression.ZipFile]::ExtractToDirectory('${env:TEMP}\advancedrun-x64.zip','${env:TEMP}\AdvancedRun')};[System.Windows.Forms.SendKeys]::SendWait('{F5}');Start-Process '${env:TEMP}\AdvancedRun\AdvancedRun.exe' -Verb RunAs`"" "${env:TEMP}\AdvancedRun\AdvancedRun.exe,0" "Download and run AdvancedRun - Install apps in SYSTEM context" "Minimized"
 Add-Shortcut "${env:SystemRoot}\System32\WindowsPowerShell\v1.0\powershell.exe" "${env:Public}\Desktop\TraceIT.lnk" "-ExecutionPolicy Bypass -WindowStyle Hidden -Command `"if(!(Test-Path '${env:TEMP}\TraceIT\TraceIT.exe')){(New-Object Net.WebClient).DownloadFile('https://knifmelti.se/TraceIT/TraceIT.zip','${env:TEMP}\TraceIT.zip');Add-Type -AssemblyName System.IO.Compression.FileSystem;[IO.Compression.ZipFile]::ExtractToDirectory('${env:TEMP}\TraceIT.zip','${env:TEMP}\TraceIT')};ie4uinit.exe -Show|Out-Null;Start-Process '${env:TEMP}\TraceIT\TraceIT.exe' -ErrorAction SilentlyContinue`"" "${env:TEMP}\TraceIT\TraceIT.exe,0" "Download and run TraceIT - Log file viewer" "Minimized"
+Add-Shortcut "${env:SystemRoot}\System32\notepad.exe" "${env:Public}\Desktop\Notepad.lnk" "" "" "Open Notepad" "Normal"
 Add-Shortcut "${env:windir}\regedit.exe" "${env:Public}\Desktop\Registry Editor.lnk" "" "" "Open Registry Editor" "Normal"
 
 # Create Install WinGet shortcut (only in Network-Only mode)
@@ -772,6 +794,7 @@ $notepadPPConfig | Out-File -FilePath (Join-Path $notepadPPConfigFolder "config.
 		$sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_SYSTEM_LIGHT_THEME', $script:HostSystemUsesLightTheme
 		$sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_NETWORKING', $Networking
 		$sandboxPreInstallScript = $sandboxPreInstallScript -replace 'PLACEHOLDER_SKIP_WINGET', $SkipWinGetInstallation.ToString()
+		$sandboxPreInstallScript = $sandboxPreInstallScript.Replace('PLACEHOLDER_TESTDATA_FOLDER', $script:SandboxTestDataFolder)
 
 		if ($Script) {
 			Write-Verbose "Creating script file from 'Script' argument with initialization code"
